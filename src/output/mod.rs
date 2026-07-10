@@ -12,7 +12,9 @@ pub fn print_results(
     count_only: bool,
 ) {
     match format {
-        crate::cli::OutputFormat::Pretty => pretty::print(results, no_color, files_only, count_only),
+        crate::cli::OutputFormat::Pretty => {
+            pretty::print(results, no_color, files_only, count_only)
+        }
         crate::cli::OutputFormat::Json => json::print(results, files_only, count_only),
         crate::cli::OutputFormat::Llm => llm::print(results, files_only, count_only),
     }

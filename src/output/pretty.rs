@@ -1,5 +1,5 @@
-use colored::*;
 use crate::search::FileMatches;
+use colored::*;
 
 pub fn print(results: &[FileMatches], no_color: bool, files_only: bool, count_only: bool) {
     let _total_matches: usize = results.iter().map(|r| r.matches.len()).sum();
@@ -17,7 +17,7 @@ pub fn print(results: &[FileMatches], no_color: bool, files_only: bool, count_on
 
     if files_only {
         for file_match in results {
-            println!("{}", &file_match.path);
+            println!("{}", file_match.path);
         }
         return;
     }
@@ -30,7 +30,7 @@ pub fn print(results: &[FileMatches], no_color: bool, files_only: bool, count_on
         for (line_idx, m) in file_match.matches.iter().enumerate() {
             if line_idx > 0 && is_context_line(m, file_match) {
                 if no_color {
-                    println!("{}-{}-", "", "");
+                    println!("--");
                 } else {
                     println!("{}", "-".dimmed());
                 }

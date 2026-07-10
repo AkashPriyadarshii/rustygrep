@@ -43,8 +43,7 @@ fn main() {
 
     let results = engine.search(&files);
 
-    let has_matches = !results.is_empty()
-        && results.iter().any(|r| !r.matches.is_empty());
+    let has_matches = !results.is_empty() && results.iter().any(|r| !r.matches.is_empty());
 
     output::print_results(
         &results,
