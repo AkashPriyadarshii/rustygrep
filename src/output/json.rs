@@ -19,7 +19,7 @@ struct JsonFileResult {
 pub fn print(results: &[FileMatches], files_only: bool, count_only: bool) {
     if files_only {
         for file_match in results {
-            println!("{}", &file_match.path);
+            println!("{}", file_match.path);
         }
         return;
     }

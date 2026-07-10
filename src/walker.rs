@@ -57,32 +57,30 @@ impl FileWalker {
                 .threads(thread_count)
                 .build();
 
-            for entry in walker {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
+            for entry in walker.flatten() {
+                let path = entry.path();
 
-                    if path.is_dir() {
-                        continue;
-                    }
-
-                    if no_binary && is_binary(path) {
-                        continue;
-                    }
-
-                    if let Some(ref ext) = file_type {
-                        if !matches_type(path, ext) {
-                            continue;
-                        }
-                    }
-
-                    if let Some(ref ext) = file_type_not {
-                        if matches_type(path, ext) {
-                            continue;
-                        }
-                    }
-
-                    let _ = tx.send(path.to_path_buf());
+                if path.is_dir() {
+                    continue;
                 }
+
+                if no_binary && is_binary(path) {
+                    continue;
+                }
+
+                if let Some(ref ext) = file_type {
+                    if !matches_type(path, ext) {
+                        continue;
+                    }
+                }
+
+                if let Some(ref ext) = file_type_not {
+                    if matches_type(path, ext) {
+                        continue;
+                    }
+                }
+
+                let _ = tx.send(path.to_path_buf());
             }
         });
 

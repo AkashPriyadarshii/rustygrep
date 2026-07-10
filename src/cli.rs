@@ -111,14 +111,8 @@ pub enum OutputFormat {
 
 impl Cli {
     pub fn context_lines(&self) -> (usize, usize) {
-        let before = self
-            .before_context
-            .or(self.context)
-            .unwrap_or(0);
-        let after = self
-            .after_context
-            .or(self.context)
-            .unwrap_or(0);
+        let before = self.before_context.or(self.context).unwrap_or(0);
+        let after = self.after_context.or(self.context).unwrap_or(0);
         (before, after)
     }
 }
