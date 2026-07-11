@@ -4,19 +4,12 @@ use serde::Serialize;
 #[derive(Serialize)]
 struct JsonMatch {
     path: String,
-    line_number: u64,
-    line: String,
+    line: u64,
+    match_text: String,
     submatches: Vec<(usize, usize)>,
 }
 
-#[derive(Serialize)]
-struct JsonFileResult {
-    path: String,
-    total_matches: usize,
-    matches: Vec<JsonMatch>,
-}
-
-pub fn print(results: &[FileMatches], files_only: bool, count_only: bool) {
+pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, json_file: bool) {
     if files_only {
         for file_match in results {
             println!("{}", file_match.path);
@@ -35,22 +28,39 @@ pub fn print(results: &[FileMatches], files_only: bool, count_only: bool) {
         return;
     }
 
-    for file_match in results {
-        let json_result = JsonFileResult {
-            path: file_match.path.clone(),
-            total_matches: file_match.matches.len(),
-            matches: file_match
-                .matches
-                .iter()
-                .map(|m| JsonMatch {
-                    path: m.path.clone(),
-                    line_number: m.line_number,
-                    line: m.line.clone(),
-                    submatches: m.submatches.clone(),
-                })
-                .collect(),
-        };
+    if json_file {
+        print_per_file(results);
+    } else {
+        print_per_match(results);
+    }
+}
 
-        println!("{}", serde_json::to_string(&json_result).unwrap());
+fn print_per_match(results: &[FileMatches]) {
+    for file_match in results {
+        for m in &file_match.matches {
+            let output = JsonMatch {
+                path: m.path.clone(),
+                line: m.line_number,
+                match_text: m.line.clone(),
+                submatches: m.submatches.clone(),
+            };
+            println!("{}", serde_json::to_string(&output).unwrap());
+        }
+    }
+}
+
+fn print_per_file(results: &[FileMatches]) {
+    for file_match in results {
+        let output = serde_json::json!({
+            "path": file_match.path,
+            "total_matches": file_match.matches.len(),
+            "matches": file_match.matches.iter().map(|m| serde_json::json!({
+                "path": m.path,
+                "line": m.line_number,
+                "match_text": m.line,
+                "submatches": m.submatches,
+            })).collect::<Vec<_>>(),
+        });
+        println!("{}", output);
     }
 }

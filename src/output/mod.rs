@@ -10,12 +10,14 @@ pub fn print_results(
     no_color: bool,
     files_only: bool,
     count_only: bool,
+    json_file: bool,
+    llm_opts: &llm::LlmOptions,
 ) {
     match format {
         crate::cli::OutputFormat::Pretty => {
             pretty::print(results, no_color, files_only, count_only)
         }
-        crate::cli::OutputFormat::Json => json::print(results, files_only, count_only),
-        crate::cli::OutputFormat::Llm => llm::print(results, files_only, count_only),
+        crate::cli::OutputFormat::Json => json::print(results, files_only, count_only, json_file),
+        crate::cli::OutputFormat::Llm => llm::print(results, files_only, count_only, llm_opts),
     }
 }

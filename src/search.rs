@@ -35,7 +35,7 @@ pub struct SearchEngine {
 
 impl SearchEngine {
     pub fn new(cli: &Cli) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut pattern = cli.pattern.clone();
+        let mut pattern = cli.pattern.clone().ok_or("pattern is required")?;
 
         if cli.ignore_case {
             pattern = format!("(?i){}", pattern);

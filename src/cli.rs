@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -12,7 +12,8 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     /// Pattern to search for (regex supported)
-    pub pattern: String,
+    #[arg(required_unless_present = "subcommand")]
+    pub pattern: Option<String>,
 
     /// Paths to search (files or directories)
     #[arg(default_value = ".")]
@@ -26,9 +27,25 @@ pub struct Cli {
     #[arg(long)]
     pub llm: bool,
 
-    /// JSON Lines output
+    /// JSON Lines output (one object per match line)
     #[arg(long)]
     pub json: bool,
+
+    /// JSON output, one object per file (legacy format)
+    #[arg(long)]
+    pub json_file: bool,
+
+    /// Token budget: cap total output at N tokens (4 chars ≈ 1 token)
+    #[arg(long)]
+    pub llm_budget: Option<usize>,
+
+    /// Disable line truncation in LLM output
+    #[arg(long)]
+    pub llm_no_truncate: bool,
+
+    /// Show only top N files ranked by match count
+    #[arg(long)]
+    pub top: Option<usize>,
 
     /// Case insensitive search
     #[arg(short = 'i', long)]
@@ -97,13 +114,23 @@ pub struct Cli {
     /// Maximum matches per file (0 = unlimited)
     #[arg(long, default_value_t = 0)]
     pub max_matches: usize,
+
+    /// Subcommands
+    #[command(subcommand)]
+    pub subcommand: Option<SubCommand>,
+}
+
+#[derive(Subcommand)]
+pub enum SubCommand {
+    /// Start MCP server for AI coding agents (stdio JSON-RPC)
+    Mcp,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
     /// Human-readable with colors and line numbers
     Pretty,
-    /// JSON Lines format
+    /// JSON Lines format (one object per match)
     Json,
     /// Token-compressed for LLM agents
     Llm,
