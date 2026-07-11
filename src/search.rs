@@ -99,7 +99,11 @@ impl SearchEngine {
             path,
             UTF8(|line_number, line| {
                 let trimmed = if line.len() > max_cols {
-                    &line[..max_cols]
+                    let mut end = max_cols;
+                    while end > 0 && !line.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    &line[..end]
                 } else {
                     line
                 };
