@@ -5,6 +5,7 @@ edition = "2021"
 description = "Fast grep with AI-native output. Token-compressed results for LLM coding agents."
 license = "MIT"
 repository = "https://github.com/AkashPriyadarshii/rustygrep"
+homepage = "https://github.com/AkashPriyadarshii/rustygrep"
 keywords = ["grep", "search", "cli", "ai", "llm"]
 categories = ["command-line-utilities", "text-processing"]
 
