@@ -60,7 +60,11 @@ pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, opts: 
             }
 
             let content = if opts.truncate && m.line.len() > opts.max_line_chars {
-                format!("{}...", &m.line[..opts.max_line_chars])
+                let mut end = opts.max_line_chars;
+                while end > 0 && !m.line.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{}...", &m.line[..end])
             } else {
                 m.line.clone()
             };

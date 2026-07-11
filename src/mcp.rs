@@ -309,7 +309,11 @@ fn call_tool(name: &str, args: &Value) -> String {
                         output.push_str(&format!("--- {}\n", current_file));
                     }
                     let content = if m.line.len() > 120 {
-                        format!("{}...", &m.line[..120])
+                        let mut end = 120;
+                        while end > 0 && !m.line.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        format!("{}...", &m.line[..end])
                     } else {
                         m.line.clone()
                     };
