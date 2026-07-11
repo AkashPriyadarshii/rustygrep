@@ -1,6 +1,6 @@
 [package]
 name = "rustygrep"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Fast grep with AI-native output. Token-compressed results for LLM coding agents."
 license = "MIT"
