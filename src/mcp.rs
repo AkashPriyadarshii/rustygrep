@@ -230,6 +230,7 @@ fn call_tool(name: &str, args: &Value) -> String {
         threads: 0,
         no_color: true,
         max_matches: max_results,
+        stats: false,
         subcommand: None,
     };
 

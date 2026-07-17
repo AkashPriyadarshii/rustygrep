@@ -106,6 +106,10 @@ pub struct Cli {
     #[arg(short = 'j', long, default_value_t = 0)]
     pub threads: usize,
 
+    /// Show search stats (time, matches, files) to stderr
+    #[arg(long)]
+    pub stats: bool,
+
     /// No color output
     #[arg(long)]
     pub no_color: bool,

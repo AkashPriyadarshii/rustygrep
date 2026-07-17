@@ -31,6 +31,9 @@ fn respects_gitignore() {
     let dir = setup_repo();
     let root = dir.path();
 
+    // ignore crate needs .git/ to activate gitignore rules
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+
     std::fs::write(root.join(".gitignore"), "*.log\n").unwrap();
     std::fs::write(root.join("test.log"), "should be ignored\n").unwrap();
     std::fs::write(root.join("test.txt"), "should be found\n").unwrap();
