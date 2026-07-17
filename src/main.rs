@@ -1,11 +1,6 @@
-mod cli;
-mod mcp;
-mod output;
-mod search;
-mod walker;
-
 use clap::Parser;
-use cli::{Cli, OutputFormat, SubCommand};
+use rustygrep::cli::{Cli, OutputFormat, SubCommand};
+use rustygrep::{mcp, output, search, walker};
 use std::process;
 
 fn main() {
