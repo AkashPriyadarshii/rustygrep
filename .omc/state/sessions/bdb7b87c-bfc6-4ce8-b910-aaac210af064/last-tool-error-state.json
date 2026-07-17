@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"rtk cargo fmt --check 2>&1\",\"description\":\"Check formatting issues\"}",
+  "error": "Exit code 1\nDiff in \\\\?\\C:\\Users\\saves\\Downloads\\rustygrep\\tests\\common\\mod.rs:25:\n     )\n     .unwrap();\n \n\u001b[31m-    std::fs::write(root.join(\"tests/integration.rs\"), \"// integration test\\nassert_eq!(2 + 2, 4);\\n\")\n\u001b[0m\u001b[31m-        .unwrap();\n\u001b[0m\u001b[32m+    std::fs::write(\n\u001b[0m\u001b[32m+        root.join(\"tests/integration.rs\"),\n\u001b[0m\u001b[32m+        \"// integration test\\nassert_eq!(2 + 2, 4);\\n\",\n\u001b[0m\u001b[32m+    )\n\u001b[0m\u001b[32m+    .unwrap();\n\u001b[0m \n     dir\n }\nDiff in \\\\?\\C:\\Users\\saves\\Downloads\\rustygrep\\...",
+  "timestamp": "2026-07-17T06:24:53.771Z",
+  "retry_count": 1
+}

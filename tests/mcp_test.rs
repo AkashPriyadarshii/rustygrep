@@ -13,7 +13,10 @@ fn start_mcp() -> std::process::Child {
         .expect("Failed to start rustygrep mcp")
 }
 
-fn send_request(child: &mut std::process::Child, request: &serde_json::Value) -> Option<serde_json::Value> {
+fn send_request(
+    child: &mut std::process::Child,
+    request: &serde_json::Value,
+) -> Option<serde_json::Value> {
     let stdin = child.stdin.as_mut()?;
     let stdout = child.stdout.as_mut()?;
 
@@ -30,12 +33,15 @@ fn send_request(child: &mut std::process::Child, request: &serde_json::Value) ->
 #[test]
 fn mcp_initialize() {
     let mut child = start_mcp();
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
     child.kill().ok();
 
@@ -50,19 +56,25 @@ fn mcp_initialize() {
 fn mcp_tools_list() {
     let mut child = start_mcp();
 
-    send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list",
-        "params": {}
-    }));
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        }),
+    );
 
     child.kill().ok();
 
@@ -80,26 +92,32 @@ fn mcp_tools_list() {
 fn mcp_search_tool() {
     let mut child = start_mcp();
 
-    send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {
-            "name": "rustygrep_search",
-            "arguments": {
-                "pattern": "fn",
-                "path": ".",
-                "format": "llm"
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "rustygrep_search",
+                "arguments": {
+                    "pattern": "fn",
+                    "path": ".",
+                    "format": "llm"
+                }
             }
-        }
-    }));
+        }),
+    );
 
     child.kill().ok();
 
@@ -112,25 +130,31 @@ fn mcp_search_tool() {
 fn mcp_files_tool() {
     let mut child = start_mcp();
 
-    send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {
-            "name": "rustygrep_files",
-            "arguments": {
-                "pattern": "fn",
-                "path": "."
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "rustygrep_files",
+                "arguments": {
+                    "pattern": "fn",
+                    "path": "."
+                }
             }
-        }
-    }));
+        }),
+    );
 
     child.kill().ok();
 
@@ -144,25 +168,31 @@ fn mcp_files_tool() {
 fn mcp_count_tool() {
     let mut child = start_mcp();
 
-    send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {
-            "name": "rustygrep_count",
-            "arguments": {
-                "pattern": "fn",
-                "path": "."
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "rustygrep_count",
+                "arguments": {
+                    "pattern": "fn",
+                    "path": "."
+                }
             }
-        }
-    }));
+        }),
+    );
 
     child.kill().ok();
 
@@ -175,18 +205,24 @@ fn mcp_count_tool() {
 fn mcp_unknown_method() {
     let mut child = start_mcp();
 
-    send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {}
-    }));
+    send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }),
+    );
 
-    let response = send_request(&mut child, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "unknown/method"
-    }));
+    let response = send_request(
+        &mut child,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "unknown/method"
+        }),
+    );
 
     child.kill().ok();
 

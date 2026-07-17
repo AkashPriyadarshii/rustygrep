@@ -25,8 +25,11 @@ pub fn setup_repo() -> TempDir {
     )
     .unwrap();
 
-    std::fs::write(root.join("tests/integration.rs"), "// integration test\nassert_eq!(2 + 2, 4);\n")
-        .unwrap();
+    std::fs::write(
+        root.join("tests/integration.rs"),
+        "// integration test\nassert_eq!(2 + 2, 4);\n",
+    )
+    .unwrap();
 
     dir
 }

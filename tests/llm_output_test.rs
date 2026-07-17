@@ -2,8 +2,8 @@ mod common;
 
 use common::{make_cli, setup_repo};
 use rustygrep::output::llm::{self, LlmOptions};
-use rustygrep::search::{FileMatches, Match};
 use rustygrep::search::SearchEngine;
+use rustygrep::search::{FileMatches, Match};
 use rustygrep::walker::FileWalker;
 
 fn make_match(path: &str, line: &str, line_number: u64) -> FileMatches {
@@ -32,7 +32,11 @@ fn llm_headers_show_match_count() {
 fn llm_truncates_long_lines() {
     let long_line = "x".repeat(200);
     let matches = vec![make_match("src/main.rs", &long_line, 1)];
-    let opts = LlmOptions { truncate: true, max_line_chars: 120, budget_tokens: None };
+    let opts = LlmOptions {
+        truncate: true,
+        max_line_chars: 120,
+        budget_tokens: None,
+    };
 
     let output = capture_llm(&matches, &opts);
     assert!(output.len() < 200);
@@ -43,7 +47,11 @@ fn llm_truncates_long_lines() {
 fn llm_no_truncate_preserves_full_line() {
     let long_line = "x".repeat(200);
     let matches = vec![make_match("src/main.rs", &long_line, 1)];
-    let opts = LlmOptions { truncate: false, max_line_chars: 120, budget_tokens: None };
+    let opts = LlmOptions {
+        truncate: false,
+        max_line_chars: 120,
+        budget_tokens: None,
+    };
 
     let output = capture_llm(&matches, &opts);
     assert!(output.contains(&long_line));
@@ -55,7 +63,11 @@ fn llm_budget_caps_output() {
         make_match("src/a.rs", "line one", 1),
         make_match("src/b.rs", "line two", 2),
     ];
-    let opts = LlmOptions { truncate: true, max_line_chars: 120, budget_tokens: Some(10) };
+    let opts = LlmOptions {
+        truncate: true,
+        max_line_chars: 120,
+        budget_tokens: Some(10),
+    };
 
     let output = capture_llm(&matches, &opts);
     assert!(output.len() <= 10 * 4 + 4);
@@ -87,7 +99,9 @@ fn capture_llm(results: &[FileMatches], opts: &LlmOptions) -> String {
     let root = dir.path();
 
     for fm in results {
-        let content = fm.matches.iter()
+        let content = fm
+            .matches
+            .iter()
             .map(|m| format!("{}\n", m.line))
             .collect::<String>();
         let _ = std::fs::create_dir_all(root.join(fm.path.rsplit('/').last().unwrap_or(".")));
@@ -129,13 +143,19 @@ fn format_matches_as_llm(results: &[FileMatches], opts: &LlmOptions) -> String {
                     "--- {} ({} match{})\n",
                     current_file,
                     file_match.matches.len(),
-                    if file_match.matches.len() == 1 { "" } else { "es" }
+                    if file_match.matches.len() == 1 {
+                        ""
+                    } else {
+                        "es"
+                    }
                 ));
             }
 
             let content = if opts.truncate && m.line.len() > opts.max_line_chars {
                 let mut end = opts.max_line_chars;
-                while end > 0 && !m.line.is_char_boundary(end) { end -= 1; }
+                while end > 0 && !m.line.is_char_boundary(end) {
+                    end -= 1;
+                }
                 format!("{}...", &m.line[..end])
             } else {
                 m.line.clone()

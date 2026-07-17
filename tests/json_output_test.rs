@@ -17,11 +17,14 @@ fn search_and_get_jsonl(args: &[&str]) -> Vec<String> {
     let mut output = Vec::new();
     for r in &results {
         for m in &r.matches {
-            output.push(serde_json::json!({
-                "path": m.path,
-                "line": m.line_number,
-                "match_text": m.line,
-            }).to_string());
+            output.push(
+                serde_json::json!({
+                    "path": m.path,
+                    "line": m.line_number,
+                    "match_text": m.line,
+                })
+                .to_string(),
+            );
         }
     }
     output
