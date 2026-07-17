@@ -110,6 +110,10 @@ pub struct Cli {
     #[arg(long)]
     pub stats: bool,
 
+    /// Show only context lines, hide the match line itself
+    #[arg(long)]
+    pub context_only: bool,
+
     /// No color output
     #[arg(long)]
     pub no_color: bool,

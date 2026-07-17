@@ -231,6 +231,7 @@ fn call_tool(name: &str, args: &Value) -> String {
         no_color: true,
         max_matches: max_results,
         stats: false,
+        context_only: false,
         subcommand: None,
     };
 
