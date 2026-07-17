@@ -1,0 +1,117 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1784269459113,
+  "projectRoot": "C:\\Users\\saves\\Downloads\\rustygrep",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Rust",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Cargo.toml"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "cargo",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cargo build",
+    "testCommand": "rtk cargo test 2>&1",
+    "lintCommand": "cargo clippy",
+    "devCommand": "cargo run",
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "master",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "benches": {
+      "path": "benches",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1784269458991,
+      "keyFiles": [
+        "search.rs"
+      ]
+    },
+    "completions": {
+      "path": "completions",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1784269458991,
+      "keyFiles": [
+        "rustygrep.bash",
+        "rustygrep.fish",
+        "_rustygrep.zsh"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 3,
+      "lastAccessed": 1784269458992,
+      "keyFiles": [
+        "COMPETITIVE-ANALYSIS.md",
+        "PRD-v0.1.1.md",
+        "ROADMAP.md"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 6,
+      "lastAccessed": 1784269459005,
+      "keyFiles": [
+        "cli.rs",
+        "lib.rs",
+        "main.rs",
+        "mcp.rs",
+        "search.rs"
+      ]
+    },
+    "target": {
+      "path": "target",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1784269459007,
+      "keyFiles": [
+        "CACHEDIR.TAG"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 7,
+      "lastAccessed": 1784269459007,
+      "keyFiles": [
+        "cli_test.rs",
+        "json_output_test.rs",
+        "llm_output_test.rs",
+        "mcp_test.rs",
+        "pretty_output_test.rs"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
