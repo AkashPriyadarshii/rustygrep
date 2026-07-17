@@ -8,7 +8,7 @@ repository = "https://github.com/AkashPriyadarshii/rustygrep"
 homepage = "https://github.com/AkashPriyadarshii/rustygrep"
 keywords = ["grep", "search", "cli", "ai", "llm"]
 categories = ["command-line-utilities", "text-processing"]
-exclude = [".github/", ".omc/", "docs/", "completions/", "CLAUDE.md", "CONTRIBUTING.md", "raw_errors.txt"]
+exclude = [".github/", ".omc/", "docs/", "completions/", "CLAUDE.md", "CONTRIBUTING.md", "raw_errors.txt", "test_errors.txt", "test_output.txt"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

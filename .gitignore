@@ -19,6 +19,8 @@ criterion/
 
 # Debug / temp
 raw_errors.txt
+test_errors.txt
+test_output.txt
 .omc/
 
 # Docs (keep in git, exclude from crate)
