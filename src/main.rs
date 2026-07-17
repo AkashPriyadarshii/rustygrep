@@ -1,6 +1,6 @@
 use clap::Parser;
 use rustygrep::cli::{Cli, OutputFormat, SubCommand};
-use rustygrep::{mcp, output, search, walker};
+use rustygrep::{init, mcp, output, search, walker};
 use std::process;
 use std::time::Instant;
 
@@ -9,9 +9,16 @@ fn main() {
     let start = Instant::now();
 
     // Handle subcommands
-    if let Some(SubCommand::Mcp) = cli.subcommand {
-        mcp::run();
-        return;
+    match cli.subcommand {
+        Some(SubCommand::Mcp) => {
+            mcp::run();
+            return;
+        }
+        Some(SubCommand::Init) => {
+            init::run();
+            return;
+        }
+        None => {}
     }
 
     let _pattern = match &cli.pattern {
@@ -56,6 +63,11 @@ fn main() {
     let results = engine.search(&files);
 
     let mut results = results;
+
+    // Apply --rank BM25-lite scoring
+    if cli.rank {
+        search::rank_by_score(&mut results);
+    }
 
     // Apply --top N ranking
     if let Some(top_n) = cli.top {

@@ -232,6 +232,7 @@ fn call_tool(name: &str, args: &Value) -> String {
         max_matches: max_results,
         stats: false,
         context_only: false,
+        rank: false,
         subcommand: None,
     };
 
