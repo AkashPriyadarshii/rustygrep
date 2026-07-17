@@ -94,3 +94,20 @@ cargo release patch   # or minor/major
 # CI builds binaries for: macOS ARM64/x86_64, Linux ARM64/x86_64, Windows x86_64
 # Binaries go to GitHub Releases + crates.io
 ```
+
+## Pre-Push Checklist (automated)
+
+Run `python prepush.py` before every push. Checks:
+1. `cargo fmt --check` — formatting
+2. `cargo clippy -- -D warnings` — lint
+3. `cargo test` — all tests pass
+4. No debug files in package (`test_errors.txt`, `raw_errors.txt`, etc.)
+
+## Lessons Learned
+
+- **Integration tests need `lib.rs`** — Binary crates can't be imported by `tests/` without a library crate exposing modules.
+- **`required_unless_present` doesn't work on `#[command(subcommand)]`** — Clap panics because the subcommand field doesn't create an arg with that ID. Use `Option<String>` for pattern instead.
+- **Always run `cargo fmt` before commit** — CI checks formatting. Tests that pass locally can fail CI if fmt is dirty.
+- **Windows paths use backslash** — Don't assert `contains("src/")` in tests. Use `contains("src")` or normalize.
+- **Exclude junk from `cargo package`** — Add `exclude = [...]` to Cargo.toml for docs, debug files, .omc/, etc.
+- **`.cargo/ignore` not a thing** — Use `[package] exclude` in Cargo.toml for crate packaging.
