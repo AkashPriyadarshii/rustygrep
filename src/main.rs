@@ -2,9 +2,11 @@ use clap::Parser;
 use rustygrep::cli::{Cli, OutputFormat, SubCommand};
 use rustygrep::{mcp, output, search, walker};
 use std::process;
+use std::time::Instant;
 
 fn main() {
     let cli = Cli::parse();
+    let start = Instant::now();
 
     // Handle subcommands
     if let Some(SubCommand::Mcp) = cli.subcommand {
@@ -80,6 +82,18 @@ fn main() {
         cli.json_file,
         &llm_opts,
     );
+
+    if cli.stats {
+        let elapsed = start.elapsed();
+        let total_matches: usize = results.iter().map(|r| r.total_matches).sum();
+        let files_with_matches = results.iter().filter(|r| !r.matches.is_empty()).count();
+        eprintln!(
+            "{} files matched, {} total matches, {:.3}s",
+            files_with_matches,
+            total_matches,
+            elapsed.as_secs_f64()
+        );
+    }
 
     if has_matches {
         process::exit(0);
