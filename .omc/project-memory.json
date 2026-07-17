@@ -19,7 +19,7 @@
   },
   "build": {
     "buildCommand": "cargo build",
-    "testCommand": "rtk cargo test 2>&1",
+    "testCommand": "rtk cargo test 2>&1 && echo \"---\" && cargo run -- --context-only -C 1 \"fn main\" src/ 2>&1 | head -20",
     "lintCommand": "cargo clippy",
     "devCommand": "cargo run",
     "scripts": {}
@@ -115,8 +115,14 @@
   "hotPaths": [
     {
       "path": "src\\main.rs",
+      "accessCount": 6,
+      "lastAccessed": 1784270203617,
+      "type": "file"
+    },
+    {
+      "path": "src\\mcp.rs",
       "accessCount": 4,
-      "lastAccessed": 1784269986489,
+      "lastAccessed": 1784270167125,
       "type": "file"
     },
     {
@@ -126,21 +132,15 @@
       "type": "file"
     },
     {
-      "path": "src\\mcp.rs",
+      "path": "src\\cli.rs",
       "accessCount": 3,
-      "lastAccessed": 1784269955184,
+      "lastAccessed": 1784270153436,
       "type": "file"
     },
     {
       "path": "CLAUDE.md",
       "accessCount": 2,
       "lastAccessed": 1784269687095,
-      "type": "file"
-    },
-    {
-      "path": "src\\cli.rs",
-      "accessCount": 2,
-      "lastAccessed": 1784269890866,
       "type": "file"
     },
     {
@@ -159,6 +159,12 @@
       "path": "tests\\mcp_test.rs",
       "accessCount": 1,
       "lastAccessed": 1784269931723,
+      "type": "file"
+    },
+    {
+      "path": "src\\output\\mod.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784270177684,
       "type": "file"
     }
   ],

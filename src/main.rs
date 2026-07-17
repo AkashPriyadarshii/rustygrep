@@ -67,6 +67,13 @@ fn main() {
 
     let has_matches = !results.is_empty() && results.iter().any(|r| !r.matches.is_empty());
 
+    // --context-only: hide match lines, show only surrounding context
+    if cli.context_only {
+        for r in &mut results {
+            r.matches.retain(|m| m.submatches.is_empty());
+        }
+    }
+
     let llm_opts = output::llm::LlmOptions {
         truncate: !cli.llm_no_truncate,
         max_line_chars: 120,
