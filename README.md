@@ -218,6 +218,63 @@ rustygrep -t rs -c "TODO" . | awk -F: '{sum += $2} END {if (sum > 0) exit 1}'
 rustygrep -t rs "unsafe" . --context 2
 ```
 
+## RTK Integration
+
+[RTK](https://github.com/rtk-ai/rtk) (69K stars) auto-rewrites `grep` → `rtk grep` via hooks. rustygrep is a drop-in replacement.
+
+### Setup
+
+```bash
+# Install rustygrep
+cargo install rustygrep
+
+# Rename or symlink binary to `rg` so RTK picks it up
+# Option A: symlink (Linux/macOS)
+ln -s $(which rustygrep) /usr/local/bin/rg
+
+# Option B: just use rustygrep directly in RTK config
+# Add to ~/.rtk/config.toml:
+# [grep]
+# command = "rustygrep"
+```
+
+### Exit Codes
+
+rustygrep matches ripgrep's exit codes exactly:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Match found |
+| 1 | No match |
+| 2 | Error (invalid pattern, etc.) |
+
+This means `rtk grep "pattern"` works transparently with rustygrep installed.
+
+### RTK Token Savings
+
+RTK applies its own compression on top. For maximum savings, use `--llm` directly:
+
+```bash
+# RTK will rewrite this, but --llm gives best token efficiency
+rtk grep --llm "error" ./src
+```
+
+---
+
+## Shell Completions
+
+```bash
+# Bash — add to ~/.bashrc
+source /path/to/rustygrep/completions/rustygrep.bash
+
+# Zsh — copy to fpath
+cp completions/_rustygrep.zsh ~/.zsh/completions/_rustygrep
+autoload -U compinit && compinit
+
+# Fish — copy to completions dir
+cp completions/rustygrep.fish ~/.config/fish/completions/
+```
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

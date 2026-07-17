@@ -12,7 +12,6 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     /// Pattern to search for (regex supported)
-    #[arg(required_unless_present = "subcommand")]
     pub pattern: Option<String>,
 
     /// Paths to search (files or directories)

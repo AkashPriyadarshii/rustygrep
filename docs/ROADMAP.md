@@ -29,43 +29,43 @@
 
 ### P0 — Must Ship
 
-- [ ] **MCP server** (`rustygrep mcp`)
-  - [ ] JSON-RPC over stdio
-  - [ ] `rustygrep_search` tool (pattern, format, max-results)
-  - [ ] `rustygrep_files` tool (files-with-matches)
-  - [ ] `rustygrep_count` tool (match counts per file)
-  - [ ] Works with Claude Code, Cursor, OpenCode via MCP config
-  - [ ] Zero external dependencies (manual JSON-RPC preferred)
+- [x] **MCP server** (`rustygrep mcp`)
+  - [x] JSON-RPC over stdio
+  - [x] `rustygrep_search` tool (pattern, format, max-results)
+  - [x] `rustygrep_files` tool (files-with-matches)
+  - [x] `rustygrep_count` tool (match counts per file)
+  - [x] Works with Claude Code, Cursor, OpenCode via MCP config
+  - [x] Zero external dependencies (manual JSON-RPC preferred)
 
-- [ ] **Improved `--llm` output**
-  - [ ] Per-file match count in `---` headers: `--- file (N matches)`
-  - [ ] Default line truncation at 120 chars (was 200)
-  - [ ] `--llm-budget N` — cap total output at N tokens (4 chars ≈ 1 token heuristic)
-  - [ ] `--llm-no-truncate` — disable line truncation
-  - [ ] Summary line: `--- N matches in M files`
+- [x] **Improved `--llm` output**
+  - [x] Per-file match count in `---` headers: `--- file (N matches)`
+  - [x] Default line truncation at 120 chars (was 200)
+  - [x] `--llm-budget N` — cap total output at N tokens (4 chars ≈ 1 token heuristic)
+  - [x] `--llm-no-truncate` — disable line truncation
+  - [x] Summary line: `--- N matches in M files`
 
 ### P1 — Should Ship
 
-- [ ] **Match ranking** (`--top N`)
-  - [ ] Sort results by match density (matches per file, descending)
-  - [ ] Return only top N files
-  - [ ] Works with all output formats
+- [x] **Match ranking** (`--top N`)
+  - [x] Sort results by match density (matches per file, descending)
+  - [x] Return only top N files
+  - [x] Works with all output formats
 
 - [ ] **RTK integration**
-  - [ ] Match ripgrep's exit codes exactly (0=match, 1=no-match, 2=error)
+  - [x] Match ripgrep's exit codes exactly (0=match, 1=no-match, 2=error)
   - [ ] Document RTK setup in README
   - [ ] Test with `rtk grep "pattern"` passthrough
 
-- [ ] **JSON output improvement**
-  - [ ] `--json` produces JSONL (one object per match line)
-  - [ ] `--json-file` produces per-file format (backward compat)
-  - [ ] Valid JSONL for `jq` piping
+- [x] **JSON output improvement**
+  - [x] `--json` produces JSONL (one object per match line)
+  - [x] `--json-file` produces per-file format (backward compat)
+  - [x] Valid JSONL for `jq` piping
 
 ### P2 — Nice to Have
 
 - [ ] `--context-only` — only show matching lines (no file paths)
 - [ ] `--stats` — show timing and match statistics to stderr
-- [ ] Completion scripts (bash, zsh, fish)
+- [x] Completion scripts (bash, zsh, fish)
 
 ---
 
