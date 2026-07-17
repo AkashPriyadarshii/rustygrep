@@ -12,6 +12,16 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Benchmarks
 criterion/
+
+# Debug / temp
+raw_errors.txt
+.omc/
+
+# Docs (keep in git, exclude from crate)
+docs/
+CLAUDE.md
+CONTRIBUTING.md

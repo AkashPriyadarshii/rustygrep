@@ -112,6 +112,13 @@
       ]
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": "Cargo.toml",
+      "accessCount": 2,
+      "lastAccessed": 1784269585821,
+      "type": "file"
+    }
+  ],
   "userDirectives": []
 }
