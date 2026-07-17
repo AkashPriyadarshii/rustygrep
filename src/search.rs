@@ -155,3 +155,85 @@ impl SearchEngine {
         }
     }
 }
+
+/// BM25-lite scoring: definitions > tests > comments > regular code
+pub fn score_match(line: &str) -> f64 {
+    let trimmed = line.trim_start();
+
+    // Definitions: fn, struct, impl, trait, enum, type, const, static, pub
+    if trimmed.starts_with("pub ")
+        || trimmed.starts_with("fn ")
+        || trimmed.starts_with("struct ")
+        || trimmed.starts_with("impl ")
+        || trimmed.starts_with("trait ")
+        || trimmed.starts_with("enum ")
+        || trimmed.starts_with("type ")
+        || trimmed.starts_with("const ")
+        || trimmed.starts_with("static ")
+        || trimmed.starts_with("async fn ")
+        || trimmed.starts_with("pub(crate) ")
+    {
+        return 10.0;
+    }
+
+    // Tests
+    if trimmed.contains("#[test]")
+        || trimmed.starts_with("test ")
+        || trimmed.starts_with("fn test_")
+        || trimmed.contains("assert")
+    {
+        return 6.0;
+    }
+
+    // Comments / docs
+    if trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("*")
+        || trimmed.starts_with("#[")
+    {
+        return 2.0;
+    }
+
+    // Regular code
+    4.0
+}
+
+/// BM25-lite file score: aggregates match scores with IDF weighting
+pub fn score_file(file_matches: &FileMatches, total_files: usize, avg_matches: f64) -> f64 {
+    let n = total_files as f64;
+    let df = file_matches.matches.len() as f64;
+    let k1 = 1.2;
+    let b = 0.75;
+
+    // IDF: log((N - df + 0.5) / (df + 0.5) + 1)
+    let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
+
+    // TF component: weighted by match quality
+    let tf: f64 = file_matches
+        .matches
+        .iter()
+        .map(|m| score_match(&m.line))
+        .sum::<f64>()
+        / (file_matches.matches.len() as f64);
+
+    // BM25 formula: IDF * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl/avgdl))
+    let dl = file_matches.matches.len() as f64;
+    let norm = dl / avg_matches.max(1.0);
+
+    idf * (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * norm))
+}
+
+/// Rank files by BM25-lite score
+pub fn rank_by_score(results: &mut [FileMatches]) {
+    let total_files = results.len() as f64;
+    let avg_matches =
+        results.iter().map(|r| r.total_matches as f64).sum::<f64>() / total_files.max(1.0);
+
+    results.sort_by(|a, b| {
+        let score_a = score_file(a, total_files as usize, avg_matches);
+        let score_b = score_file(b, total_files as usize, avg_matches);
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}

@@ -19,7 +19,7 @@
   },
   "build": {
     "buildCommand": "cargo build",
-    "testCommand": "rtk cargo test 2>&1 && echo \"---\" && cargo run -- --context-only -C 1 \"fn main\" src/ 2>&1 | head -20",
+    "testCommand": "rtk cargo test 2>&1 && echo \"---\" && cargo run -- --rank \"fn\" src/ 2>&1 | head -10",
     "lintCommand": "cargo clippy",
     "devCommand": "cargo run",
     "scripts": {}
@@ -115,26 +115,26 @@
   "hotPaths": [
     {
       "path": "src\\main.rs",
+      "accessCount": 10,
+      "lastAccessed": 1784270492385,
+      "type": "file"
+    },
+    {
+      "path": "src\\cli.rs",
       "accessCount": 6,
-      "lastAccessed": 1784270203617,
+      "lastAccessed": 1784270411906,
       "type": "file"
     },
     {
       "path": "src\\mcp.rs",
-      "accessCount": 4,
-      "lastAccessed": 1784270167125,
+      "accessCount": 5,
+      "lastAccessed": 1784270514284,
       "type": "file"
     },
     {
       "path": "Cargo.toml",
       "accessCount": 3,
       "lastAccessed": 1784269647827,
-      "type": "file"
-    },
-    {
-      "path": "src\\cli.rs",
-      "accessCount": 3,
-      "lastAccessed": 1784270153436,
       "type": "file"
     },
     {
@@ -147,6 +147,18 @@
       "path": "tests\\walker_test.rs",
       "accessCount": 2,
       "lastAccessed": 1784269910696,
+      "type": "file"
+    },
+    {
+      "path": "src\\init.rs",
+      "accessCount": 2,
+      "lastAccessed": 1784270384150,
+      "type": "file"
+    },
+    {
+      "path": "src\\search.rs",
+      "accessCount": 2,
+      "lastAccessed": 1784270451883,
       "type": "file"
     },
     {
@@ -165,6 +177,12 @@
       "path": "src\\output\\mod.rs",
       "accessCount": 1,
       "lastAccessed": 1784270177684,
+      "type": "file"
+    },
+    {
+      "path": "src\\lib.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784270337440,
       "type": "file"
     }
   ],

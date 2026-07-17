@@ -114,6 +114,10 @@ pub struct Cli {
     #[arg(long)]
     pub context_only: bool,
 
+    /// Rank results by relevance (definitions > tests > comments)
+    #[arg(long)]
+    pub rank: bool,
+
     /// No color output
     #[arg(long)]
     pub no_color: bool,
@@ -131,6 +135,8 @@ pub struct Cli {
 pub enum SubCommand {
     /// Start MCP server for AI coding agents (stdio JSON-RPC)
     Mcp,
+    /// Set up rustygrep for AI coding agents (Claude Code, Cursor, etc.)
+    Init,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
