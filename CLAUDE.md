@@ -4,7 +4,7 @@
 
 Fast parallel grep with AI-native token-compressed output. Built on ripgrep crates (`grep-regex`, `grep-searcher`, `ignore`) + `rayon` for parallelism. Ships as a single binary with zero config.
 
-**Current version:** 0.1.1 (shipped 2026-07-17)
+**Current version:** 0.1.3 (shipped 2026-07-19)
 
 ## Build & Test
 
@@ -57,15 +57,17 @@ Minimal by design. No external MCP library — hand-rolled JSON-RPC with `serde_
 
 ## Handoff Notes
 
-### What's Done (v0.1.1)
+### What's Done (v0.1.3)
 
-- MCP server (`rustygrep mcp`) — 3 tools: search, files, count
-- `--llm` output: per-file match counts, 120-char truncation, summary line
-- `--llm-budget N` — cap output at N tokens (4 chars ≈ 1 token)
-- `--top N` — rank files by match count
-- `--json` = JSONL per-match, `--json-file` = per-file
-- Exit codes match ripgrep (0=match, 1=no-match, 2=error)
-- RTK integration documented
+- **Reliability fixes (v0.1.3)** — 6 originally reported bugs + structural issues fixed:
+  - Zero-width regex hang (\b, ^, $, a*)
+  - `-v` invert uses grep-searcher built-in `invert_match` (was broken custom matcher)
+  - `-C`/`-A`/`-B` context lines now emitted
+  - Multi-path search (all paths walked, not just `paths[0]`)
+  - `-M` applies at display layer only — matches past column boundary no longer lost
+  - MCP: `max_results` = file count, `isError`, `submatches` in json, null-id notifications ignored
+  - `-c` single-file bare count; no `0` on no-match; `--context-only` works
+  - Single file read (no double I/O); binary detection reads 8KB prefix; walker uses `file_type()`
 
 ### What's Next (v0.2.0)
 

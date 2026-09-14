@@ -50,17 +50,21 @@ impl FileWalker {
         let paths = self.paths.clone();
 
         thread::spawn(move || {
-            let walker = WalkBuilder::new(&paths[0])
+            let mut builder = WalkBuilder::new(&paths[0]);
+            builder
                 .hidden(!hidden)
                 .ignore(!no_ignore)
                 .git_ignore(!no_ignore)
-                .threads(thread_count)
-                .build();
+                .threads(thread_count);
+            for p in &paths[1..] {
+                builder.add(p);
+            }
+            let walker = builder.build();
 
             for entry in walker.flatten() {
                 let path = entry.path();
 
-                if path.is_dir() {
+                if entry.file_type().is_some_and(|ft| ft.is_dir()) {
                     continue;
                 }
 
@@ -89,22 +93,19 @@ impl FileWalker {
 }
 
 fn is_binary(path: &Path) -> bool {
+    use std::io::Read;
     if let Ok(metadata) = std::fs::metadata(path) {
         if metadata.len() > 10_000_000 {
             return true;
         }
     }
-
-    if let Ok(bytes) = std::fs::read(path) {
-        let check_len = bytes.len().min(8192);
-        for &byte in &bytes[..check_len] {
-            if byte == 0 {
-                return true;
-            }
-        }
-    }
-
-    false
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return true,
+    };
+    let mut buf = [0u8; 8192];
+    let n = f.read(&mut buf).unwrap_or(0);
+    buf[..n].contains(&0)
 }
 
 fn matches_type(path: &Path, file_type: &str) -> bool {

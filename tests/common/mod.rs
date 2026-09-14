@@ -1,5 +1,6 @@
 use tempfile::TempDir;
 
+#[allow(dead_code)]
 pub fn setup_repo() -> TempDir {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
@@ -34,6 +35,7 @@ pub fn setup_repo() -> TempDir {
     dir
 }
 
+#[allow(dead_code)]
 pub fn make_cli(args: &[&str]) -> rustygrep::cli::Cli {
     use clap::Parser;
     let mut full_args = vec!["test"];

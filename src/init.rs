@@ -83,7 +83,7 @@ fn setup_cursor(cwd: &Path) {
 
     let settings_path = vscode_dir.join("settings.json");
 
-    let _rustygrep_setting = serde_json::json!({
+    let cursor_setting = serde_json::json!({
         "search.searchEditor.singleClick": "open",
         "search.mode": "reuseEditor"
     });
@@ -98,9 +98,30 @@ fn setup_cursor(cwd: &Path) {
             println!("  [ok] Cursor — search settings already configured");
             return;
         }
+    } else {
+        // Create .vscode/settings.json if missing.
+        let parent = settings_path.parent().unwrap_or(&vscode_dir);
+        let _ = fs::create_dir_all(parent);
     }
 
-    println!("  [tip] For Cursor integration, add to .vscode/settings.json:");
-    println!("        \"search.searchEditor.singleClick\": \"open\"");
-    println!("        \"search.mode\": \"reuseEditor\"");
+    let existing: serde_json::Value = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::json!({}));
+    let mut merged = existing;
+    merged["search.searchEditor.singleClick"] =
+        cursor_setting["search.searchEditor.singleClick"].clone();
+    merged["search.mode"] = cursor_setting["search.mode"].clone();
+    let ok = fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&merged).unwrap(),
+    )
+    .is_ok();
+    if ok {
+        println!("  [ok] Cursor — wrote search settings to .vscode/settings.json");
+    } else {
+        println!("  [tip] For Cursor integration, add to .vscode/settings.json:");
+        println!("        \"search.searchEditor.singleClick\": \"open\"");
+        println!("        \"search.mode\": \"reuseEditor\"");
+    }
 }

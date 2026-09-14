@@ -1,6 +1,31 @@
 # rustygrep Roadmap
 
-**Last updated:** 2026-07-10
+**Last updated:** 2026-07-19
+
+---
+
+## v0.1.3 — Reliability (shipped)
+
+**Tag:** v0.1.3 | **Date:** 2026-07-19 | **Theme:** "Correct before clever"
+
+- [x] Fix zero-width regex hang (`\b`, `^`, `$`, `a*` no longer hang)
+- [x] Fix `-v` invert match (grep-searcher built-in `invert_match` flag)
+- [x] Fix context lines (`-C`, `-A`, `-B` now emitted)
+- [x] Fix multi-path search (all paths walked)
+- [x] Fix `-M` display truncation (matches past column boundary kept)
+- [x] Fix MCP protocol (max_results=files, isError, submatches, null-id)
+- [x] Fix `-c` output (single-file bare count, no spurious `0`)
+- [x] Fix `--context-only` (empty before)
+- [x] Single file read, 8KB binary prefix, walker `file_type()`
+- [x] Stats/exit code computed pre-display-filter
+
+---
+
+## v0.1.2 — Patch (shipped)
+
+**Tag:** v0.1.2 | **Date:** 2026-07-18
+
+- [x] Minor release fixes (binary packaging, CI matrix)
 
 ---
 
@@ -23,9 +48,9 @@
 
 ---
 
-## v0.1.1 — Agent Integration (next)
+## v0.1.1 — Agent Integration (shipped)
 
-**Target:** 2026-07-17 | **Theme:** "The grep agents actually use"
+**Tag:** v0.1.1 | **Date:** 2026-07-17 | **Theme:** "The grep agents actually use"
 
 ### P0 — Must Ship
 
@@ -51,9 +76,9 @@
   - [x] Return only top N files
   - [x] Works with all output formats
 
-- [ ] **RTK integration**
+- [x] **RTK integration**
   - [x] Match ripgrep's exit codes exactly (0=match, 1=no-match, 2=error)
-  - [ ] Document RTK setup in README
+  - [x] Document RTK setup in README
   - [ ] Test with `rtk grep "pattern"` passthrough
 
 - [x] **JSON output improvement**
@@ -63,8 +88,8 @@
 
 ### P2 — Nice to Have
 
-- [ ] `--context-only` — only show matching lines (no file paths)
-- [ ] `--stats` — show timing and match statistics to stderr
+- [x] `--context-only` — only show matching lines (no file paths)
+- [x] `--stats` — show timing and match statistics to stderr
 - [x] Completion scripts (bash, zsh, fish)
 
 ---

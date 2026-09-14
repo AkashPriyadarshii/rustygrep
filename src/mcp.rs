@@ -41,7 +41,7 @@ pub fn run() {
 
 fn handle_request(request: &Value) -> Option<Value> {
     let method = request.get("method")?.as_str()?;
-    let id = request.get("id");
+    let id = request.get("id")?; // notifications (no id) → never respond.
 
     match method {
         "initialize" => Some(json!({
@@ -152,20 +152,33 @@ fn handle_request(request: &Value) -> Option<Value> {
             let tool_name = params.get("name")?.as_str()?;
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
-            let result = call_tool(tool_name, &args);
-
-            Some(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": result
-                        }
-                    ]
-                }
-            }))
+            match call_tool(tool_name, &args) {
+                Ok(text) => Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": text
+                            }
+                        ]
+                    }
+                })),
+                Err(msg) => Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "isError": true,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": msg
+                            }
+                        ]
+                    }
+                })),
+            }
         }
         _ => Some(json!({
             "jsonrpc": "2.0",
@@ -178,10 +191,10 @@ fn handle_request(request: &Value) -> Option<Value> {
     }
 }
 
-fn call_tool(name: &str, args: &Value) -> String {
+fn call_tool(name: &str, args: &Value) -> Result<String, String> {
     let pattern = match args.get("pattern").and_then(|p| p.as_str()) {
         Some(p) => p.to_string(),
-        None => return "Error: pattern is required".to_string(),
+        None => return Err("Error: pattern is required".to_string()),
     };
 
     let path = args
@@ -229,7 +242,7 @@ fn call_tool(name: &str, args: &Value) -> String {
         invert_match: false,
         threads: 0,
         no_color: true,
-        max_matches: max_results,
+        max_matches: 0,
         stats: false,
         context_only: false,
         rank: false,
@@ -238,26 +251,32 @@ fn call_tool(name: &str, args: &Value) -> String {
 
     let engine = match SearchEngine::new(&cli) {
         Ok(e) => e,
-        Err(err) => return format!("Error: invalid pattern: {}", err),
+        Err(err) => return Err(format!("Error: invalid pattern: {}", err)),
     };
 
     let files = FileWalker::new(cli.paths.clone(), false, false, false, file_type, None, 0).walk();
 
     if files.is_empty() {
-        return "No files found matching criteria.".to_string();
+        return Ok("No files found matching criteria.".to_string());
     }
 
-    let results = engine.search(&files);
+    let mut results = engine.search(&files);
 
     if results.is_empty() {
-        return "No matches found.".to_string();
+        return Ok("No matches found.".to_string());
+    }
+
+    // max_results = maximum NUMBER OF FILES to return, most relevant first.
+    if max_results > 0 {
+        results.sort_by_key(|r| std::cmp::Reverse(r.matches.len()));
+        results.truncate(max_results);
     }
 
     let count_only = name == "rustygrep_count";
 
     if name == "rustygrep_files" {
         let files: Vec<&str> = results.iter().map(|r| r.path.as_str()).collect();
-        return files.join("\n");
+        return Ok(files.join("\n"));
     }
 
     if count_only {
@@ -265,7 +284,7 @@ fn call_tool(name: &str, args: &Value) -> String {
             .iter()
             .map(|r| format!("{}:{}", r.path, r.matches.len()))
             .collect();
-        return lines.join("\n");
+        return Ok(lines.join("\n"));
     }
 
     // For search: use the requested format
@@ -280,12 +299,13 @@ fn call_tool(name: &str, args: &Value) -> String {
                             "path": m.path,
                             "line": m.line_number,
                             "match_text": m.line,
+                            "submatches": m.submatches,
                         }))
                         .unwrap()
                     })
                 })
                 .collect();
-            lines.join("\n")
+            Ok(lines.join("\n"))
         }
         "pretty" => {
             let lines: Vec<String> = results
@@ -296,7 +316,7 @@ fn call_tool(name: &str, args: &Value) -> String {
                         .map(move |m| format!("{}:{}:{}", m.path, m.line_number, m.line))
                 })
                 .collect();
-            lines.join("\n")
+            Ok(lines.join("\n"))
         }
         _ => {
             // LLM format
@@ -331,7 +351,7 @@ fn call_tool(name: &str, args: &Value) -> String {
                 results.len(),
                 if results.len() == 1 { "" } else { "s" }
             ));
-            output
+            Ok(output)
         }
     }
 }

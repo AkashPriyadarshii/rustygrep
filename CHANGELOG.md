@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-07-19
+
+### Fixed
+
+- **Zero-width regex hang** — patterns like `\b`, `^`, `$`, `a*` no longer hang forever (advance past empty matches)
+- **`-v` / `--invert-match`** — actually shows non-matching lines (was empty + exit 1)
+- **`-C` / `-A` / `-B` context lines** — context lines now included in output (was silently dropped)
+- **Multi-path search** — `rustygrep pattern a/ b/` now searches all given paths (was only first)
+- **`-M` match on untruncated line** — matches past `max_columns` boundary no longer silently lost (exit 1 → exit 0)
+- **`-c` single file count** — bare number output, rg compat (was `file:count`)
+- **`-c` no match** — silent exit 1 (was printing `0`)
+- **`--context-only`** — now shows context lines (was always empty)
+- **MCP `submatches`** — json output includes `submatches` array
+- **MCP `isError`** — tool errors use correct protocol flag
+- **MCP null-id** — notifications silently ignored (was responding)
+- **MCP `max_results`** — now limits file count (was match count, misleading)
+- **`is_binary`** — reads only 8KB prefix (was full file)
+- **Walker `is_dir`** — uses `file_type()` (was extra stat syscall)
+
+### Changed
+
+- **Display truncation moved to output layer** — search stores full lines; `-M` only affects display, not search correctness
+- **grep-searcher `invert_match` flag** — uses built-in searcher inversion (was broken custom InvertedMatcher)
+- **Walker multi-path** — `WalkBuilder::add()` for each path (was `paths[0]` only)
+- **Stats computed pre-filter** — `--stats` / exit code reflect search results before `--top` / `--context-only`
+- **`--rank` + `--top` compose** — rank first, then top (rank is relevance ordering; top truncates)
+
+---
+
 ## [0.1.1] - 2026-07-10
 
 ### Added
