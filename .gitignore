@@ -27,3 +27,9 @@ test_output.txt
 docs/
 CLAUDE.md
 CONTRIBUTING.md
+
+# MCP server config — local machine paths (Claude Code / Cursor), not portable
+.mcp.json
+
+# Site lives in a sibling repo, never here
+/rustygrep-site/

@@ -1,0 +1,10 @@
+# Deploy-site assets live in gh-pages, not the Rust crate.
+# Keep them out of GitHub's language stats and rust-analysis tools.
+/docs linguist-vendored=true
+*.html linguist-vendored=true
+*.svg linguist-vendored=true
+
+# Normalize line endings (Windows dev machine → unix in repo)
+* text=auto eol=lf
+*.rs text eol=lf
+Cargo.lock text eol=lf
