@@ -1,22 +1,32 @@
+<!-- SEO: rustygrep — fast grep with AI-native, token-compressed output for LLM coding agents.
+description: rustygrep is a drop-in ripgrep alternative written in Rust. The --llm flag compresses grep output 60-95% so AI coding agents burn fewer context-window tokens. Built-in MCP server wires rustygrep into Claude Code, Cursor, and OpenCode. SIMD-accelerated parallel search, gitignore-aware, zero config. Install with cargo install rustygrep.
+keywords: rustygrep, fast grep, ripgrep alternative, AI grep, LLM grep, token compression, MCP server, grep for AI agents, grep for Claude Code, rust grep, SIMD grep, parallel grep, token-efficient code search
+robots: index, follow
+-->
+
 <div align="center">
+
+<img src="assets/logo.svg" width="96" height="96" alt="rustygrep logo — rust-orange rg monogram over a token-compression meter">
 
 # rustygrep
 
-**Fast grep with AI-native output. Token-compressed results for LLM coding agents.**
+**The token-efficient grep for AI coding agents.** Compressed output, fewer tokens, more context room.
 
-[![Crates.io](https://img.shields.io/crates/v/rustygrep?color=blue&style=flat-square)](https://crates.io/crates/rustygrep)
+[![crates.io](https://img.shields.io/crates/v/rustygrep?color=%23CE422B&style=flat-square&logo=rust)](https://crates.io/crates/rustygrep)
+[![Downloads](https://img.shields.io/crates/d/rustygrep?color=%23CE422B&style=flat-square)](https://crates.io/crates/rustygrep)
+[![Downloads/month](https://img.shields.io/crates/drv/rustygrep?color=%23CE422B&style=flat-square)](https://crates.io/crates/rustygrep)
+[![CI](https://img.shields.io/github/actions/workflow/status/AkashPriyadarshii/rustygrep/ci.yml?color=%23CE422B&style=flat-square)](https://github.com/AkashPriyadarshii/rustygrep/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-2021-blue?style=flat-square&logo=rust)](https://www.rust-lang.org/)
-[![CI](https://img.shields.io/github/actions/workflow/status/AkashPriyadarshii/rustygrep/ci.yml?style=flat-square)](https://github.com/AkashPriyadarshii/rustygrep/actions)
-[![Downloads](https://img.shields.io/crates/d/rustygrep?style=flat-square)](https://crates.io/crates/rustygrep)
 
 </div>
 
 ---
 
-## Why?
+## Why
 
-LLM coding agents run thousands of grep calls per session. Every token counts in the context window. `rustygrep` compresses output by **60-95%** while keeping everything an agent needs — file paths, line numbers, and matching content.
+AI coding agents run thousands of grep calls per session. Each result eats context-window tokens. `rustygrep --llm` keeps the file paths, line numbers, and matching content, and cuts the token count 60-95%.
+
 
 ```
 # Normal grep output (human-readable)
