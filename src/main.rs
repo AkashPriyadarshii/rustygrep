@@ -60,24 +60,36 @@ fn main() {
         process::exit(1);
     }
 
-    let results = engine.search(&files);
-
-    let mut results = results;
+    let mut results = engine.search(&files);
 
     // Apply --rank BM25-lite scoring
     if cli.rank {
         search::rank_by_score(&mut results);
     }
 
-    // Apply --top N ranking
+    // Apply --top N ranking (rank first if --rank given; else sort by match count)
     if let Some(top_n) = cli.top {
         if top_n > 0 {
-            results.sort_by_key(|b| std::cmp::Reverse(b.total_matches));
+            if !cli.rank {
+                results.sort_by_key(|b| std::cmp::Reverse(b.total_matches));
+            }
             results.truncate(top_n);
         }
     }
 
+    // Exit code + stats reflect the search, not the display filters.
     let has_matches = !results.is_empty() && results.iter().any(|r| !r.matches.is_empty());
+    if cli.stats {
+        let elapsed = start.elapsed();
+        let total_matches: usize = results.iter().map(|r| r.total_matches).sum();
+        let files_with_matches = results.iter().filter(|r| !r.matches.is_empty()).count();
+        eprintln!(
+            "{} files matched, {} total matches, {:.3}s",
+            files_with_matches,
+            total_matches,
+            elapsed.as_secs_f64()
+        );
+    }
 
     // --context-only: hide match lines, show only surrounding context
     if cli.context_only {
@@ -100,19 +112,8 @@ fn main() {
         cli.count,
         cli.json_file,
         &llm_opts,
+        cli.max_columns,
     );
-
-    if cli.stats {
-        let elapsed = start.elapsed();
-        let total_matches: usize = results.iter().map(|r| r.total_matches).sum();
-        let files_with_matches = results.iter().filter(|r| !r.matches.is_empty()).count();
-        eprintln!(
-            "{} files matched, {} total matches, {:.3}s",
-            files_with_matches,
-            total_matches,
-            elapsed.as_secs_f64()
-        );
-    }
 
     if has_matches {
         process::exit(0);

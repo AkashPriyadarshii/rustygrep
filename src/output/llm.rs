@@ -83,7 +83,8 @@ pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, opts: 
 
     if let Some(budget) = opts.budget_tokens {
         let char_budget = budget * 4;
-        if output.len() > char_budget {
+        let char_count = output.chars().count();
+        if char_count > char_budget {
             let truncated: String = output.chars().take(char_budget).collect();
             println!("{}...", truncated);
             return;

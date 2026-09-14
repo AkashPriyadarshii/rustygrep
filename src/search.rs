@@ -1,7 +1,6 @@
 use grep_matcher::Matcher;
 use grep_regex::RegexMatcherBuilder;
-use grep_searcher::sinks::UTF8;
-use grep_searcher::SearcherBuilder;
+use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -24,11 +23,98 @@ pub struct FileMatches {
     pub total_matches: usize,
 }
 
+/// Collects matches and context lines from the searcher.
+struct MatchCollector<'a> {
+    path: String,
+    matcher: &'a grep_regex::RegexMatcher,
+    invert: bool,
+    max_matches: usize,
+    matches: Vec<Match>,
+}
+
+/// Advance past a UTF-8 character boundary (skip continuation bytes).
+#[inline]
+fn next_char_boundary(bytes: &[u8], pos: usize) -> usize {
+    let mut i = pos + 1;
+    while i < bytes.len() && (bytes[i] & 0xC0) == 0x80 {
+        i += 1;
+    }
+    i.min(bytes.len())
+}
+
+impl<'a> Sink for MatchCollector<'a> {
+    type Error = std::io::Error;
+
+    fn matched(
+        &mut self,
+        _searcher: &Searcher,
+        mat: &SinkMatch<'_>,
+    ) -> Result<bool, std::io::Error> {
+        let bytes = mat.bytes();
+        let (line, submatches) = if self.invert {
+            // Inverted matches carry no submatches.
+            (trim_line_ending(bytes), vec![])
+        } else {
+            let mut submatches = Vec::new();
+            let mut offset = 0;
+            while offset < bytes.len() {
+                match self.matcher.find(&bytes[offset..]) {
+                    Ok(Some(m)) => {
+                        let start = offset + m.start();
+                        let end = offset + m.end();
+                        submatches.push((start, end));
+                        offset = if m.start() == m.end() {
+                            next_char_boundary(bytes, end)
+                        } else {
+                            end
+                        };
+                    }
+                    _ => break,
+                }
+            }
+            (trim_line_ending(bytes), submatches)
+        };
+        self.matches.push(Match {
+            path: self.path.clone(),
+            line_number: mat.line_number().unwrap_or(0),
+            line,
+            submatches,
+        });
+        Ok(!(self.max_matches > 0 && self.matches.len() >= self.max_matches))
+    }
+
+    fn context(
+        &mut self,
+        _searcher: &Searcher,
+        ctx: &SinkContext<'_>,
+    ) -> Result<bool, std::io::Error> {
+        let line = trim_line_ending(ctx.bytes());
+        self.matches.push(Match {
+            path: self.path.clone(),
+            line_number: ctx.line_number().unwrap_or(0),
+            line,
+            submatches: vec![],
+        });
+        Ok(true)
+    }
+}
+
+#[inline]
+fn trim_line_ending(bytes: &[u8]) -> String {
+    let mut end = bytes.len();
+    if end > 0 && bytes[end - 1] == b'\n' {
+        end -= 1;
+    }
+    if end > 0 && bytes[end - 1] == b'\r' {
+        end -= 1;
+    }
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
 pub struct SearchEngine {
     matcher: grep_regex::RegexMatcher,
     context_before: usize,
     context_after: usize,
-    max_columns: usize,
     invert_match: bool,
     max_matches: usize,
 }
@@ -55,7 +141,6 @@ impl SearchEngine {
             matcher,
             context_before,
             context_after,
-            max_columns: cli.max_columns,
             invert_match: cli.invert_match,
             max_matches: cli.max_matches,
         })
@@ -78,72 +163,34 @@ impl SearchEngine {
     }
 
     fn search_file(&self, path: &Path) -> Option<FileMatches> {
+        // Single read — no double I/O.
         let content = std::fs::read(path).ok()?;
-        let _content_str = std::str::from_utf8(&content).ok()?;
 
-        let mut matches = Vec::new();
+        // Skip non-UTF-8 (binary) files to match existing semantics.
+        if std::str::from_utf8(&content).is_err() {
+            return None;
+        }
+
+        let file_path = path.to_string_lossy().to_string();
+
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             .before_context(self.context_before)
             .after_context(self.context_after)
+            .invert_match(self.invert_match)
             .build();
 
-        let matcher = &self.matcher;
-        let max_cols = self.max_columns;
-        let invert = self.invert_match;
-        let max_matches = self.max_matches;
-        let file_path = path.to_string_lossy().to_string();
+        let mut collector = MatchCollector {
+            path: file_path.clone(),
+            matcher: &self.matcher,
+            invert: self.invert_match,
+            max_matches: self.max_matches,
+            matches: Vec::new(),
+        };
 
-        let _ = searcher.search_path(
-            matcher,
-            path,
-            UTF8(|line_number, line| {
-                let trimmed = if line.len() > max_cols {
-                    let mut end = max_cols;
-                    while end > 0 && !line.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    &line[..end]
-                } else {
-                    line
-                };
+        let _ = searcher.search_slice(self.matcher.clone(), &content, &mut collector);
 
-                let is_match = matcher.is_match(trimmed.as_bytes()).unwrap_or(false);
-                let show_line = if invert { !is_match } else { is_match };
-
-                if show_line {
-                    let mut submatches = Vec::new();
-                    let bytes = trimmed.as_bytes();
-                    let mut remaining = bytes;
-                    let mut offset = 0;
-                    while !remaining.is_empty() {
-                        if let Ok(Some(m)) = matcher.find(remaining) {
-                            let start = offset + m.start();
-                            let end = offset + m.end();
-                            submatches.push((start, end));
-                            offset = end;
-                            remaining = &bytes[end..];
-                        } else {
-                            break;
-                        }
-                    }
-
-                    matches.push(Match {
-                        path: file_path.clone(),
-                        line_number,
-                        line: trimmed.trim_end().to_string(),
-                        submatches,
-                    });
-
-                    if max_matches > 0 && matches.len() >= max_matches {
-                        return Ok(false);
-                    }
-                }
-
-                Ok(true)
-            }),
-        );
-
+        let matches = collector.matches;
         if matches.is_empty() {
             None
         } else {
@@ -223,15 +270,15 @@ pub fn score_file(file_matches: &FileMatches, total_files: usize, avg_matches: f
     idf * (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * norm))
 }
 
-/// Rank files by BM25-lite score
+/// Rank files by BM25-lite score (highest first).
 pub fn rank_by_score(results: &mut [FileMatches]) {
-    let total_files = results.len() as f64;
+    let total_files = results.len();
     let avg_matches =
-        results.iter().map(|r| r.total_matches as f64).sum::<f64>() / total_files.max(1.0);
+        results.iter().map(|r| r.total_matches as f64).sum::<f64>() / (total_files as f64).max(1.0);
 
     results.sort_by(|a, b| {
-        let score_a = score_file(a, total_files as usize, avg_matches);
-        let score_b = score_file(b, total_files as usize, avg_matches);
+        let score_a = score_file(a, total_files, avg_matches);
+        let score_b = score_file(b, total_files, avg_matches);
         score_b
             .partial_cmp(&score_a)
             .unwrap_or(std::cmp::Ordering::Equal)
