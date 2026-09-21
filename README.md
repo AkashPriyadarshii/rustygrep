@@ -21,6 +21,8 @@ robots: index, follow
 
 </div>
 
+[![crates.io](https://img.shields.io/crates/v/rustygrep?style=flat-square)](https://crates.io/crates/rustygrep) [![downloads](https://img.shields.io/crates/d/rustygrep?style=flat-square)](https://crates.io/crates/rustygrep) [![release](https://img.shields.io/github/v/release/AkashPriyadarshii/rustygrep?style=flat-square&label=release)](https://github.com/AkashPriyadarshii/rustygrep/releases)
+
 ---
 
 ## Why
