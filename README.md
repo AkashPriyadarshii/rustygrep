@@ -21,8 +21,6 @@ robots: index, follow
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-2021-blue?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 
-*Fuel the next build:* 
-
 </div>
 
 [![crates.io](https://img.shields.io/crates/v/rustygrep?style=flat-square)](https://crates.io/crates/rustygrep) [![downloads](https://img.shields.io/crates/d/rustygrep?style=flat-square)](https://crates.io/crates/rustygrep) [![release](https://img.shields.io/github/v/release/AkashPriyadarshii/rustygrep?style=flat-square&label=release)](https://github.com/AkashPriyadarshii/rustygrep/releases)
