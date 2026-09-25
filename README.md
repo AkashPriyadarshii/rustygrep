@@ -10,6 +10,8 @@ robots: index, follow
 
 # rustygrep
 
+**Support:** fuel the next build — [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/AkashPriyadarshi)
+
 **The token-efficient grep for AI coding agents.** Compressed output, fewer tokens, more context room.
 
 [![crates.io](https://img.shields.io/crates/v/rustygrep?color=%23CE422B&style=flat-square&logo=rust)](https://crates.io/crates/rustygrep)
@@ -19,7 +21,7 @@ robots: index, follow
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-2021-blue?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 
-*Fuel the next build:* [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/AkashPriyadarshi)
+*Fuel the next build:* 
 
 </div>
 
@@ -30,7 +32,6 @@ robots: index, follow
 ## Why
 
 AI coding agents run thousands of grep calls per session. Each result eats context-window tokens. `rustygrep --llm` keeps the file paths, line numbers, and matching content, and cuts the token count 60-95%.
-
 
 ```
 # Normal grep output (human-readable)
