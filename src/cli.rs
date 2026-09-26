@@ -94,7 +94,8 @@ pub struct Cli {
     #[arg(long)]
     pub no_ignore: bool,
 
-    /// Search binary files
+    /// Skip binary files (probe first 8KB for NUL). Default: search all
+    /// files, non-UTF-8 skipped later by the searcher.
     #[arg(long)]
     pub no_binary: bool,
 

@@ -45,7 +45,7 @@ fn main() {
         }
     };
 
-    let files = walker::FileWalker::new(
+    let walker = walker::FileWalker::new(
         cli.paths.clone(),
         cli.hidden,
         cli.no_ignore,
@@ -53,14 +53,26 @@ fn main() {
         cli.file_type.clone(),
         cli.file_type_not.clone(),
         cli.threads,
-    )
-    .walk();
+    );
 
-    if files.is_empty() {
+    // Measured (20MB/60-file bench, this machine): streaming walk+search
+    // == collect-then-search within noise (±5ms). Keep the streaming path
+    // only where it preserves semantics — -l short-circuits per file
+    // either way, so no mode regresses by routing through one path.
+    let (mut results, seen) = if cli.files_with_matches && engine.is_files_only_fast() {
+        engine.search_streaming(&walker)
+    } else {
+        let files = walker.walk();
+        if files.is_empty() {
+            process::exit(1);
+        }
+        let n = files.len();
+        (engine.search(&files), n)
+    };
+
+    if seen == 0 && results.is_empty() {
         process::exit(1);
     }
-
-    let mut results = engine.search(&files);
 
     // Apply --rank BM25-lite scoring
     if cli.rank {

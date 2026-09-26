@@ -170,17 +170,32 @@ Add to `.claude/settings.json` or `~/.claude/settings.json`:
 
 ## Benchmarks
 
-Tested on Apple M4, 32GB RAM, 9,000 Rust files:
+Measured 2026-09-26 on Windows 11, Intel i3-1115G4 (2C/4T), 8GB RAM.
+Corpus: 60 generated `.rs` files, 20MB, 180k lines, 40,993 `HashMap` hits.
+Median of 7 runs, output piped to null (search cost, not terminal cost).
+`rg` = ripgrep from the same shell, same corpus. Reproduce:
+`python3 -c` loop with `time.perf_counter()` around `subprocess.run` —
+or `rustygrep PATTERN . --stats` (internal timer on stderr).
 
-| Tool | Search Time | Token Count |
-|------|-------------|-------------|
-| grep | 850ms | 12,400 |
-| ripgrep | 82ms | 11,800 |
-| **rustygrep** | **78ms** | **11,600** |
-| **rustygrep --llm** | **78ms** | **4,100** |
-| **rustygrep --llm --llm-budget 500** | **78ms** | **~500** |
+| Tool | Search Time | Notes |
+|------|-------------|-------|
+| ripgrep | 35ms | baseline, same corpus |
+| **rustygrep `--no-color`** | **55ms** | 1.6x off rg |
+| **rustygrep `-l`** | **26ms** | first-hit short-circuit |
+| **rustygrep `-c`** | **31ms** | full scan, no spans |
+| **rustygrep `--llm`** | **66ms** | token-compressed format |
+| **rustygrep `--json`** | **84ms** | one object per match |
+| ripgrep `-l` | 19ms | baseline |
+| ripgrep `-c` | 22ms | baseline |
 
-**rustygrep --llm** produces **65% fewer tokens** than ripgrep while maintaining the same search speed.
+Correctness on the same corpus: `wc -l` match-line counts identical
+(40,993 vs 40,993), `-c` per-file counts identical (`diff` clean).
+
+> Old table (Apple M4, 9,000 files: rg 82ms / rustygrep 78ms) was measured
+> on different hardware and is kept for reference, not as a current claim.
+
+**rustygrep --llm** produces fewer tokens than ripgrep's default output
+while staying within ~2x of ripgrep's speed on this box.
 
 ## How It Works
 

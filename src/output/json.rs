@@ -10,9 +10,12 @@ struct JsonMatch {
 }
 
 pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, json_file: bool) {
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::with_capacity(1 << 20, stdout.lock());
     if files_only {
         for file_match in results {
-            println!("{}", file_match.path);
+            let _ = writeln!(out, "{}", file_match.path);
         }
         return;
     }
@@ -23,7 +26,7 @@ pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, json_f
                 "path": file_match.path,
                 "count": file_match.matches.len(),
             });
-            println!("{}", output);
+            let _ = writeln!(out, "{}", output);
         }
         return;
     }
@@ -36,20 +39,34 @@ pub fn print(results: &[FileMatches], files_only: bool, count_only: bool, json_f
 }
 
 fn print_per_match(results: &[FileMatches]) {
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::with_capacity(1 << 20, stdout.lock());
+    // Borrow line text into the serializer: no per-match String clones.
+    #[derive(serde::Serialize)]
+    struct JsonMatchRef<'a> {
+        path: &'a str,
+        line: u64,
+        match_text: &'a str,
+        submatches: &'a [(usize, usize)],
+    }
     for file_match in results {
         for m in &file_match.matches {
-            let output = JsonMatch {
-                path: m.path.clone(),
+            let output = JsonMatchRef {
+                path: &m.path,
                 line: m.line_number,
-                match_text: m.line.clone(),
-                submatches: m.submatches.clone(),
+                match_text: &m.line,
+                submatches: &m.submatches,
             };
-            println!("{}", serde_json::to_string(&output).unwrap());
+            let _ = writeln!(out, "{}", serde_json::to_string(&output).unwrap());
         }
     }
 }
 
 fn print_per_file(results: &[FileMatches]) {
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::with_capacity(1 << 20, stdout.lock());
     for file_match in results {
         let output = serde_json::json!({
             "path": file_match.path,
@@ -61,6 +78,6 @@ fn print_per_file(results: &[FileMatches]) {
                 "submatches": m.submatches,
             })).collect::<Vec<_>>(),
         });
-        println!("{}", output);
+        let _ = writeln!(out, "{}", output);
     }
 }

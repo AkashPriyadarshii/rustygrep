@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Search hot path (measured, 20MB/60-file corpus, i3-1115G4)** — full-output
+  `--no-color` 138ms → 55ms; `-l` first-hit short-circuit 88ms → 26ms;
+  `-c` 128ms → 31ms; `--llm` 293ms → 66ms; `--json` 292ms → 84ms.
+  ripgrep on the same corpus: 35ms / 19ms / 22ms. Counts verified
+  identical (`-c` diff clean, 40,993 match lines both tools).
+- **`--no-binary` is opt-in** — default searches all files, non-UTF-8 skipped
+  by the whole-buffer check in search (was: open+read 8KB probe per file).
+- **`--llm` skips submatch spans** — no per-line regex re-scan when spans are
+  never printed (was: `find_iter` per matched line).
+- **Zero-alloc color path** — raw ANSI bytes into the buffer (was: `colored`
+  heap String per segment); `--no-color` writes `write!` directly.
+- **Buffered stdout everywhere** — 1MB `BufWriter` in pretty/json/llm printers
+  (was: one `println!` lock+flush per match line).
+- **LLM printer streams** — no whole-output `String` build (was: 13MB copy).
+- **Pre-sized match vecs** — `Vec::with_capacity(1024)` per file (was: grow
+  from zero across ~700 hits/file).
+- **`from_utf8` fast path** — per-line `to_owned` on valid UTF-8 (was:
+  `from_utf8_lossy` scan per line).
+- **`-l` streams walk+search** — first-hit search runs on the walker's own
+  threads as files are yielded (measured ≈ collect-then-search ±5ms, kept
+  for `-l` only to preserve `--top`/`--rank` semantics elsewhere).
+- **README benchmarks** — replaced stale M4 table with measured Windows/i3
+  numbers, method, corpus, and reproduce steps.
+
 ## [0.1.3] - 2026-07-19
 
 ### Fixed
