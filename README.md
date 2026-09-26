@@ -171,25 +171,27 @@ Add to `.claude/settings.json` or `~/.claude/settings.json`:
 ## Benchmarks
 
 Measured 2026-09-26 on Windows 11, Intel i3-1115G4 (2C/4T), 8GB RAM.
-Corpus: 60 generated `.rs` files, 20MB, 180k lines, 40,993 `HashMap` hits.
-Median of 7 runs, output piped to null (search cost, not terminal cost).
+Corpus: 200 generated `.rs` files, 52MB, 600k lines, 112,426 `HashMap` hits.
+Median of 5 runs, output piped to null (search cost, not terminal cost).
 `rg` = ripgrep from the same shell, same corpus. Reproduce:
 `python3 -c` loop with `time.perf_counter()` around `subprocess.run` —
 or `rustygrep PATTERN . --stats` (internal timer on stderr).
 
-| Tool | Search Time | Notes |
+| Tool | Search Time | vs rg |
 |------|-------------|-------|
-| ripgrep | 35ms | baseline, same corpus |
-| **rustygrep `--no-color`** | **55ms** | 1.6x off rg |
-| **rustygrep `-l`** | **26ms** | first-hit short-circuit |
-| **rustygrep `-c`** | **31ms** | full scan, no spans |
-| **rustygrep `--llm`** | **66ms** | token-compressed format |
-| **rustygrep `--json`** | **84ms** | one object per match |
-| ripgrep `-l` | 19ms | baseline |
-| ripgrep `-c` | 22ms | baseline |
+| ripgrep | 64ms | baseline |
+| **rustygrep `--no-color`** | **91ms** | 1.4x |
+| ripgrep `-l` | 24ms | baseline |
+| **rustygrep `-l`** | **22ms** | **faster** |
+| ripgrep `-c` | 35ms | baseline |
+| **rustygrep `-c`** | **56ms** | 1.6x |
+| **rustygrep `--llm`** | **96ms** | — |
+| **rustygrep `--json`** | **159ms** | — |
+| miss (both) | ~28ms | parity |
 
-Correctness on the same corpus: `wc -l` match-line counts identical
-(40,993 vs 40,993), `-c` per-file counts identical (`diff` clean).
+Correctness on the same corpus: `-c` per-file counts identical
+(`diff` clean, 112,426 both tools). `-l` beats rg (first-hit
+short-circuit + streaming walk). Miss path at parity (28 vs 27ms).
 
 > Old table (Apple M4, 9,000 files: rg 82ms / rustygrep 78ms) was measured
 > on different hardware and is kept for reference, not as a current claim.

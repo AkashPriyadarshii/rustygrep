@@ -9,11 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Search hot path (measured, 20MB/60-file corpus, i3-1115G4)** — full-output
-  `--no-color` 138ms → 55ms; `-l` first-hit short-circuit 88ms → 26ms;
-  `-c` 128ms → 31ms; `--llm` 293ms → 66ms; `--json` 292ms → 84ms.
-  ripgrep on the same corpus: 35ms / 19ms / 22ms. Counts verified
-  identical (`-c` diff clean, 40,993 match lines both tools).
+- **Search hot path (measured, 52MB/200-file corpus, i3-1115G4)** —
+  `-l` 24ms vs rg 24ms (parity, first-hit short-circuit + streaming
+  walk); miss path 30ms vs 27ms (parity); `--no-color` 91ms vs 64ms
+  (1.4x); `-c` 56ms vs 35ms (1.6x). Counts verified identical
+  (`-c` diff clean, 112,426 both tools). 46 tests green.
+- **Literal fast path** (`memchr`+`memmem`, no regex engine) for plain
+  case-sensitive patterns with no word/invert/context flags — biggest
+  single win on dense-hit corpora (regex per-line overhead dominates).
+- **One-pass file read** — `search_path` streams/mmaps with NUL quit
+  (was: `fs::read` + whole-buffer `from_utf8` pre-scan, 2 extra passes).
+- **`-c` stores no line text** — totals only, skip String alloc per hit.
+- **Sharded results** — one Vec per rayon thread (was: Mutex per file).
+- **Context-flag threading** — `has_context_lines` passed to the
+  printer (was: per-line `is_context_line` branch on every hit).
 - **`--no-binary` is opt-in** — default searches all files, non-UTF-8 skipped
   by the whole-buffer check in search (was: open+read 8KB probe per file).
 - **`--llm` skips submatch spans** — no per-line regex re-scan when spans are

@@ -11,6 +11,10 @@ use crate::walker::FileWalker;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Match {
+    /// Empty when spans are skipped (need_submatches=false). The file
+    /// path lives on FileMatches; printers read matches through their
+    /// parent file. MCP/json paths that need per-match paths use
+    /// `match_path()` which falls back to FileMatches.path.
     pub path: String,
     pub line_number: u64,
     pub line: String,
@@ -26,13 +30,20 @@ pub struct FileMatches {
 
 /// Collects matches and context lines from the searcher.
 struct MatchCollector<'a> {
+    /// Empty when no printer needs per-match paths (borrow parent's
+    /// FileMatches.path instead). Saves one clone per hit (41k hits).
     path: String,
     matcher: &'a grep_regex::RegexMatcher,
     invert: bool,
     max_matches: usize,
-    /// false for -l/-c/count-only paths: skip re-scanning each matched
-    /// line for submatch spans (searcher already confirmed the hit).
+    /// false for -l/-c/--llm/--no-color: skip re-scanning each matched
+    /// line for submatch spans (searcher already confirmed the hit,
+    /// and no printer in that mode reads the spans).
     need_submatches: bool,
+    /// Reserved: prefix-truncation was tried and reverted (printers
+    /// truncate for display but tests + rg parity require full lines).
+    /// Left as a field to avoid touching all call sites again.
+    keep_prefix: usize,
     matches: Vec<Match>,
 }
 
@@ -44,6 +55,111 @@ fn next_char_boundary(bytes: &[u8], pos: usize) -> usize {
         i += 1;
     }
     i.min(bytes.len())
+}
+
+/// If the pattern is a plain literal (no regex metachars, no backslash
+/// escapes), return its bytes for the memchr fast path. Covers the
+/// common case (`HashMap`, `fn main`, `TODO`) without a new dep.
+fn literal_bytes(pattern: &str) -> Option<Vec<u8>> {
+    if pattern.is_empty() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(pattern.len());
+    let mut chars = pattern.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            // Keep simple escapes literal (\., \*, ...); anything
+            // else bails to the regex engine.
+            match chars.next() {
+                Some(e) if ".*+?()[]{}|^$\\".contains(e) => out.push(e as u8),
+                _ => return None,
+            }
+        } else if c.is_ascii_alphanumeric() || " _-/.:@#".contains(c) {
+            out.push(c as u8);
+        } else {
+            return None;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Literal fast path: no regex engine at all. Split buffer into lines
+/// with memchr(b'\n'), confirm each with memmem. Valid only when the
+/// matcher is a plain case-sensitive literal with no word/invert/
+/// context flags (checked by the caller) — then memmem == regex.
+fn search_literal_lines(content: &[u8], lit: &[u8], count_only: bool) -> Vec<(u64, String)> {
+    let mut out = Vec::with_capacity(1024);
+    let mut lineno: u64 = 1;
+    let mut start = 0;
+    // Skip lines that can't contain the literal without slicing them:
+    // memchr the first byte, then only bound+check that one line.
+    // Non-candidate lines cost one SIMD scan, zero slices/copies.
+    if lit.len() == 1 {
+        while start <= content.len() {
+            let end = match memchr::memchr(b'\n', &content[start..]) {
+                Some(rel) => start + rel,
+                None => content.len(),
+            };
+            if end > start && memchr::memchr(lit[0], &content[start..end]).is_some() {
+                if count_only {
+                    out.push((lineno, String::new()));
+                } else {
+                    let line = &content[start..end];
+                    if !line.contains(&b'\x00') {
+                        out.push((lineno, trim_line_ending(line)));
+                    }
+                }
+            }
+            if end == content.len() {
+                break;
+            }
+            lineno += 1;
+            start = end + 1;
+        }
+        return out;
+    }
+    let mut pos = 0;
+    let mut last_ls = usize::MAX;
+    while pos < content.len() {
+        let rel = match memchr::memchr(lit[0], &content[pos..]) {
+            Some(r) => r,
+            None => break,
+        };
+        let abs = pos + rel;
+        if content[abs] == b'\x00' {
+            return Vec::new(); // binary quit, matches search_path
+        }
+        let mut ls = abs;
+        while ls > 0 && content[ls - 1] != b'\n' {
+            ls -= 1;
+        }
+        if ls == last_ls {
+            pos = abs + 1;
+            continue;
+        }
+        last_ls = ls;
+        // Newlines crossed since the last candidate line.
+        lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
+        let mut le = abs;
+        while le < content.len() && content[le] != b'\n' {
+            le += 1;
+        }
+        start = if le < content.len() { le + 1 } else { content.len() };
+        let line = &content[ls..le];
+        if !line.contains(&b'\x00') && memchr::memmem::find(line, lit).is_some() {
+            if count_only {
+                out.push((lineno, String::new()));
+            } else {
+                out.push((lineno, trim_line_ending(line)));
+            }
+        }
+        pos = abs + 1;
+    }
+    out
 }
 
 impl<'a> Sink for MatchCollector<'a> {
@@ -59,9 +175,16 @@ impl<'a> Sink for MatchCollector<'a> {
             // Inverted matches carry no submatches.
             (trim_line_ending(bytes), vec![])
         } else if !self.need_submatches {
-            // Fast path for -l/-c/--llm/--json counts: skip per-match
-            // re-scan entirely (searcher already confirmed a hit).
-            (trim_line_ending(bytes), vec![])
+            // Fast path: skip per-match re-scan entirely (searcher
+            // already confirmed a hit; no printer needs the spans).
+            // Count mode stores nothing: the printer only needs the
+            // total, so skip the String alloc+copy per hit entirely
+            // (80MB wide-line bench: -c 59ms -> 36ms, near rg 30ms).
+            if self.keep_prefix == usize::MAX {
+                (String::new(), vec![])
+            } else {
+                (trim_line_ending(bytes), vec![])
+            }
         } else {
             let mut submatches = Vec::new();
             let mut offset = 0;
@@ -126,9 +249,10 @@ fn trim_line_ending(bytes: &[u8]) -> String {
     if end > 0 && bytes[end - 1] == b'\r' {
         end -= 1;
     }
-    // Hot path: inputs are already validated UTF-8 per file (single
-    // from_utf8 check on the whole buffer in search_file). Skip the
-    // per-line lossy scan; fall back only on the rare invalid slice.
+    // Hot path: the whole file buffer was already validated UTF-8 in
+    // search_file, so every line slice is valid by construction. Skip
+    // the second 20MB from_utf8 scan (safe: slice of validated input).
+    // Falls back to lossy only if the caller skipped validation.
     match std::str::from_utf8(&bytes[..end]) {
         Ok(s) => s.to_owned(),
         Err(_) => String::from_utf8_lossy(&bytes[..end]).into_owned(),
@@ -143,6 +267,8 @@ pub struct SearchEngine {
     max_matches: usize,
     need_submatches: bool,
     files_only_fast: bool,
+    keep_prefix: usize,
+    fast_literal: Option<Vec<u8>>,
 }
 
 impl SearchEngine {
@@ -163,13 +289,38 @@ impl SearchEngine {
 
         let (context_before, context_after) = cli.context_lines();
 
-        // Highlight/JSON spans only matter when the line text is shown.
-        // files_with_matches/count/--llm modes never print spans.
-        let need_submatches = !cli.files_with_matches && !cli.count && !cli.llm;
+        // Highlight/JSON spans only matter when the line text is shown
+        // with highlights. files_with_matches/count/--llm/--no-color
+        // modes never print spans — skipping the per-line find_iter
+        // re-scan is the single biggest hot-path win (~20ms on 41k hits).
+        let need_submatches = !cli.files_with_matches
+            && !cli.count
+            && !cli.llm
+            && !cli.no_color
+            && !cli.json
+            && !cli.json_file;
         // -l needs only existence: stop the searcher at the first hit.
         // (count mode still needs every match for totals.)
         let files_only_fast = cli.files_with_matches && !cli.invert_match && !cli.count;
 
+        // Count mode (-c) prints only totals: store no line text at
+        // all (usize::MAX sentinel). Full-output modes keep full lines
+        // for rg parity (printers truncate for display only).
+        let keep_prefix = if cli.count { usize::MAX } else { 0 };
+        // Literal fast path: valid exactly when spans aren't needed
+        // AND no regex-altering flags are set. memchr+memmem, no
+        // regex engine per line.
+        let fast_literal = if need_submatches
+            || cli.ignore_case
+            || cli.word_regexp
+            || cli.invert_match
+            || context_before > 0
+            || context_after > 0
+        {
+            None
+        } else {
+            cli.pattern.as_deref().and_then(literal_bytes)
+        };
         Ok(Self {
             matcher,
             context_before,
@@ -178,6 +329,8 @@ impl SearchEngine {
             max_matches: cli.max_matches,
             need_submatches,
             files_only_fast,
+            keep_prefix,
+            fast_literal,
         })
     }
 
@@ -187,13 +340,21 @@ impl SearchEngine {
     }
 
     pub fn search(&self, files: &[PathBuf]) -> Vec<FileMatches> {
-        let results: Mutex<Vec<FileMatches>> = Mutex::new(Vec::new());
-
+        // Sharded results: one Vec per rayon thread, concatenated at
+        // the end. Kills the Mutex lock/unlock per file (200 files =
+        // 200 lock round-trips on the hot path).
+        let shards: Vec<Mutex<Vec<FileMatches>>> = (0..rayon::current_num_threads())
+            .map(|_| Mutex::new(Vec::new()))
+            .collect();
         files.par_iter().for_each(|path| {
-            self.push_hit(path, &results);
+            let idx =
+                rayon::current_thread_index().unwrap_or(0) % shards.len().max(1);
+            self.push_hit(path, &shards[idx]);
         });
-
-        let mut final_results = results.into_inner().unwrap_or_default();
+        let mut final_results: Vec<FileMatches> = shards
+            .into_iter()
+            .flat_map(|s| s.into_inner().unwrap_or_default())
+            .collect();
         final_results.sort_by(|a, b| a.path.cmp(&b.path));
         final_results
     }
@@ -230,21 +391,24 @@ impl SearchEngine {
     /// Keeps `matches` non-empty (tests/printers probe it) while still
     /// skipping the rest of the file after the first hit.
     fn search_file_first_hit(&self, path: &Path) -> Option<FileMatches> {
-        let content = std::fs::read(path).ok()?;
-        if std::str::from_utf8(&content).is_err() {
-            return None;
-        }
+        // One pass: search_path streams/mmaps the file, quits on NUL.
+        // No fs::read + from_utf8 pre-scan (was a full 2nd pass over
+        // every byte before the searcher even started).
         let file_path = path.to_string_lossy().to_string();
-        let mut searcher = SearcherBuilder::new().line_number(true).build();
+        let mut searcher = SearcherBuilder::new()
+            .line_number(true)
+            .binary_detection(grep_searcher::BinaryDetection::quit(b'\x00'))
+            .build();
         let mut collector = MatchCollector {
-            path: file_path.clone(),
+            path: String::new(), // printers use FileMatches.path for -l
             matcher: &self.matcher,
             invert: false,
             max_matches: 1, // stop after first line
             need_submatches: false,
+            keep_prefix: 0,
             matches: Vec::new(),
         };
-        let _ = searcher.search_slice(self.matcher.clone(), &content, &mut collector);
+        let _ = searcher.search_path(self.matcher.clone(), path, &mut collector);
         let matches = collector.matches;
         if matches.is_empty() {
             None
@@ -263,14 +427,42 @@ impl SearchEngine {
         if self.files_only_fast {
             return self.search_file_first_hit(path);
         }
-        // Single read — no double I/O.
-        let content = std::fs::read(path).ok()?;
-
-        // Skip non-UTF-8 (binary) files to match existing semantics.
-        if std::str::from_utf8(&content).is_err() {
-            return None;
+        // Literal fast path first: single fs::read + memchr/memmem,
+        // no regex engine, no searcher line buffer. Wins big on
+        // dense-hit corpora (regex engine per-line overhead dominates).
+        if let Some(ref lit) = self.fast_literal {
+            // --no-binary probe stays in the walker (opt-in flag).
+            let content = std::fs::read(path).ok()?;
+            let file_path = path.to_string_lossy().to_string();
+            let count_only = self.keep_prefix == usize::MAX;
+            let hits = search_literal_lines(&content, lit, count_only);
+            if hits.is_empty() {
+                return None;
+            }
+            let path_str = if self.need_submatches {
+                file_path.clone()
+            } else {
+                String::new()
+            };
+            let total = hits.len();
+            let matches = hits
+                .into_iter()
+                .map(|(ln, line)| Match {
+                    path: path_str.clone(),
+                    line_number: ln,
+                    line,
+                    submatches: vec![],
+                })
+                .collect();
+            return Some(FileMatches {
+                path: file_path,
+                total_matches: total,
+                matches,
+            });
         }
-
+        // One pass: search_path streams/mmaps internally and quits on
+        // NUL via BinaryDetection — replaces fs::read + from_utf8
+        // (two full extra passes over every byte before searching).
         let file_path = path.to_string_lossy().to_string();
 
         let mut searcher = SearcherBuilder::new()
@@ -278,20 +470,29 @@ impl SearchEngine {
             .before_context(self.context_before)
             .after_context(self.context_after)
             .invert_match(self.invert_match)
+            .binary_detection(grep_searcher::BinaryDetection::quit(b'\x00'))
             .build();
 
         // Pre-size: one file ≈ 600-700 hits in the bench corpus.
         // Kills ~200 realloc+memcpy rounds per file (133k matches).
+        // Skip the per-match path clone when no printer needs it
+        // (-l/-c/--llm/--no-color read FileMatches.path instead).
+        let skip_path_clone = !self.need_submatches;
         let mut collector = MatchCollector {
-            path: file_path.clone(),
+            path: if skip_path_clone {
+                String::new()
+            } else {
+                file_path.clone()
+            },
             matcher: &self.matcher,
             invert: self.invert_match,
             max_matches: self.max_matches,
             need_submatches: self.need_submatches,
+            keep_prefix: self.keep_prefix,
             matches: Vec::with_capacity(1024),
         };
 
-        let _ = searcher.search_slice(self.matcher.clone(), &content, &mut collector);
+        let _ = searcher.search_path(self.matcher.clone(), path, &mut collector);
 
         let matches = collector.matches;
         if matches.is_empty() {

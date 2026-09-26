@@ -116,6 +116,7 @@ fn main() {
         budget_tokens: cli.llm_budget,
     };
 
+    let (ctx_before, ctx_after) = cli.context_lines();
     output::print_results(
         &results,
         &output_format,
@@ -125,6 +126,7 @@ fn main() {
         cli.json_file,
         &llm_opts,
         cli.max_columns,
+        ctx_before > 0 || ctx_after > 0,
     );
 
     if has_matches {

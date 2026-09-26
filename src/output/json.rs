@@ -52,8 +52,15 @@ fn print_per_match(results: &[FileMatches]) {
     }
     for file_match in results {
         for m in &file_match.matches {
+            // Fall back to the parent file path when per-match clones
+            // were skipped (need_submatches off for --json).
+            let p = if m.path.is_empty() {
+                file_match.path.as_str()
+            } else {
+                m.path.as_str()
+            };
             let output = JsonMatchRef {
-                path: &m.path,
+                path: p,
                 line: m.line_number,
                 match_text: &m.line,
                 submatches: &m.submatches,
@@ -72,7 +79,7 @@ fn print_per_file(results: &[FileMatches]) {
             "path": file_match.path,
             "total_matches": file_match.matches.len(),
             "matches": file_match.matches.iter().map(|m| serde_json::json!({
-                "path": m.path,
+                "path": if m.path.is_empty() { &file_match.path } else { &m.path },
                 "line": m.line_number,
                 "match_text": m.line,
                 "submatches": m.submatches,

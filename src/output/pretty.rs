@@ -27,6 +27,7 @@ pub fn print(
     files_only: bool,
     count_only: bool,
     max_cols: usize,
+    has_context_lines: bool,
 ) {
     use std::io::Write;
     // Single lock + buffer: one syscall-ish flush instead of a
@@ -52,9 +53,12 @@ pub fn print(
         return;
     }
 
+    // has_context_lines comes from main (context flags were passed).
+    // Fast modes never emit context lines, so skip the per-line
+    // is_context_line branch entirely on that path.
     for file_match in results {
         for (line_idx, m) in file_match.matches.iter().enumerate() {
-            if line_idx > 0 && is_context_line(m) {
+            if has_context_lines && line_idx > 0 && is_context_line(m) {
                 if no_color {
                     let _ = writeln!(out, "--");
                 } else {
@@ -76,8 +80,58 @@ pub fn print(
             };
 
             if no_color {
-                // write! avoids writeln!'s extra format-arg pass for the hot path.
-                let _ = write!(out, "{}:{}:{}\n", m.path, m.line_number, display_line);
+                // No format! machinery: raw bytes + inline line-number
+                // digits. format! per line cost ~15ms on 41k lines.
+                // Borrow the parent file path — per-match path clones
+                // are skipped when need_submatches is off.
+                let p = if m.path.is_empty() {
+                    file_match.path.as_str()
+                } else {
+                    m.path.as_str()
+                };
+                // Fast line-number digits: bench lines are <3000,
+                // skip the tmp-buffer reverse for the common cases.
+                let mut numbuf = [0u8; 20];
+                let len = if m.line_number < 10 {
+                    numbuf[0] = b'0' + m.line_number as u8;
+                    1
+                } else if m.line_number < 100 {
+                    numbuf[0] = b'0' + (m.line_number / 10) as u8;
+                    numbuf[1] = b'0' + (m.line_number % 10) as u8;
+                    2
+                } else if m.line_number < 1000 {
+                    numbuf[0] = b'0' + (m.line_number / 100) as u8;
+                    numbuf[1] = b'0' + ((m.line_number / 10) % 10) as u8;
+                    numbuf[2] = b'0' + (m.line_number % 10) as u8;
+                    3
+                } else if m.line_number < 10000 {
+                    numbuf[0] = b'0' + (m.line_number / 1000) as u8;
+                    numbuf[1] = b'0' + ((m.line_number / 100) % 10) as u8;
+                    numbuf[2] = b'0' + ((m.line_number / 10) % 10) as u8;
+                    numbuf[3] = b'0' + (m.line_number % 10) as u8;
+                    4
+                } else {
+                    let mut tmp = [0u8; 20];
+                    let mut v = m.line_number;
+                    let mut l = 0;
+                    while v > 0 {
+                        tmp[l] = b'0' + (v % 10) as u8;
+                        v /= 10;
+                        l += 1;
+                    }
+                    let mut i = 0;
+                    while i < l {
+                        numbuf[i] = tmp[l - 1 - i];
+                        i += 1;
+                    }
+                    l
+                };
+                let _ = out.write_all(p.as_bytes());
+                let _ = out.write_all(b":");
+                let _ = out.write_all(&numbuf[..len]);
+                let _ = out.write_all(b":");
+                let _ = out.write_all(display_line.as_bytes());
+                let _ = out.write_all(b"\n");
             } else {
                 let _ = write_colored_match(&mut out, m, display_line, vis);
             }
