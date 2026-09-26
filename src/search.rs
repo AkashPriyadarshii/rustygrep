@@ -91,13 +91,18 @@ fn literal_bytes(pattern: &str) -> Option<Vec<u8>> {
 /// with memchr(b'\n'), confirm each with memmem. Valid only when the
 /// matcher is a plain case-sensitive literal with no word/invert/
 /// context flags (checked by the caller) — then memmem == regex.
-fn search_literal_lines(content: &[u8], lit: &[u8], count_only: bool) -> Vec<(u64, String)> {
+fn search_literal_lines(
+    content: &[u8],
+    finder: &memchr::memmem::Finder,
+    count_only: bool,
+) -> Vec<(u64, String)> {
     let mut out = Vec::with_capacity(1024);
     let mut lineno: u64 = 1;
     let mut start = 0;
     // Skip lines that can't contain the literal without slicing them:
     // memchr the first byte, then only bound+check that one line.
     // Non-candidate lines cost one SIMD scan, zero slices/copies.
+    let lit = finder.needle();
     if lit.len() == 1 {
         while start <= content.len() {
             let end = match memchr::memchr(b'\n', &content[start..]) {
@@ -150,7 +155,7 @@ fn search_literal_lines(content: &[u8], lit: &[u8], count_only: bool) -> Vec<(u6
         }
         start = if le < content.len() { le + 1 } else { content.len() };
         let line = &content[ls..le];
-        if !line.contains(&b'\x00') && memchr::memmem::find(line, lit).is_some() {
+        if !line.contains(&b'\x00') && finder.find(line).is_some() {
             if count_only {
                 out.push((lineno, String::new()));
             } else {
@@ -391,12 +396,11 @@ impl SearchEngine {
     /// Keeps `matches` non-empty (tests/printers probe it) while still
     /// skipping the rest of the file after the first hit.
     fn search_file_first_hit(&self, path: &Path) -> Option<FileMatches> {
-        // One pass: search_path streams/mmaps the file, quits on NUL.
-        // No fs::read + from_utf8 pre-scan (was a full 2nd pass over
-        // every byte before the searcher even started).
+        // -l needs existence only: no line numbers needed. Disable
+        // the searcher's per-match line-number bookkeeping.
         let file_path = path.to_string_lossy().to_string();
         let mut searcher = SearcherBuilder::new()
-            .line_number(true)
+            .line_number(false)
             .binary_detection(grep_searcher::BinaryDetection::quit(b'\x00'))
             .build();
         let mut collector = MatchCollector {
@@ -432,10 +436,13 @@ impl SearchEngine {
         // dense-hit corpora (regex engine per-line overhead dominates).
         if let Some(ref lit) = self.fast_literal {
             // --no-binary probe stays in the walker (opt-in flag).
+            // Finder built once per file (not per line) — reuses the
+            // precomputed skip table instead of rebuilding per hit.
             let content = std::fs::read(path).ok()?;
             let file_path = path.to_string_lossy().to_string();
             let count_only = self.keep_prefix == usize::MAX;
-            let hits = search_literal_lines(&content, lit, count_only);
+            let finder = memchr::memmem::Finder::new(lit);
+            let hits = search_literal_lines(&content, &finder, count_only);
             if hits.is_empty() {
                 return None;
             }
@@ -465,8 +472,12 @@ impl SearchEngine {
         // (two full extra passes over every byte before searching).
         let file_path = path.to_string_lossy().to_string();
 
+        // Count mode: line numbers never printed — disable the
+        // searcher's per-match line-number bookkeeping (~5-10ms on
+        // dense corpora). Full-output modes keep it enabled.
+        let count_only = self.keep_prefix == usize::MAX;
         let mut searcher = SearcherBuilder::new()
-            .line_number(true)
+            .line_number(!count_only)
             .before_context(self.context_before)
             .after_context(self.context_after)
             .invert_match(self.invert_match)
