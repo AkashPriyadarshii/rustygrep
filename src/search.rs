@@ -483,6 +483,108 @@ impl SearchEngine {
         (out, total, nfiles)
     }
 
+    /// Fused walk+search arena: the search runs INSIDE the ignore
+    /// parallel walker's visitor — one pool, not walk-pool feeding a
+    /// rayon pool. Each visitor call appends straight to a shard
+    /// (picked round-robin by an atomic counter, no TLS needed).
+    /// Same output bytes as search_arena; same gating (caller).
+    pub fn search_arena_fused(&self, walker: &FileWalker, max_cols: usize) -> (Vec<u8>, usize, usize) {
+        struct Shard {
+            bytes: Vec<u8>,
+            files: Vec<(String, usize, usize, usize)>,
+        }
+        let n = 4;
+        let shards: Vec<Mutex<Shard>> = (0..n)
+            .map(|_| {
+                Mutex::new(Shard {
+                    bytes: Vec::with_capacity(1 << 20),
+                    files: Vec::new(),
+                })
+            })
+            .collect();
+        let lit = self.fast_literal.clone().unwrap_or_default();
+        let finder = memchr::memmem::Finder::new(&lit);
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        walker.walk_parallel(|path| {
+            let idx = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
+            let content = match std::fs::read(path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
+            {
+                let mut lineno: u64 = 1;
+                let mut start = 0;
+                let mut pos = 0;
+                let mut last_ls = usize::MAX;
+                while pos < content.len() {
+                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
+                        Some(r) => r,
+                        None => break,
+                    };
+                    let abs = pos + rel;
+                    if content[abs] == b'\x00' {
+                        return;
+                    }
+                    let mut ls = abs;
+                    while ls > 0 && content[ls - 1] != b'\n' {
+                        ls -= 1;
+                    }
+                    if ls == last_ls {
+                        pos = abs + 1;
+                        continue;
+                    }
+                    last_ls = ls;
+                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
+                    let mut le = abs;
+                    while le < content.len() && content[le] != b'\n' {
+                        le += 1;
+                    }
+                    start = if le < content.len() { le + 1 } else { content.len() };
+                    let line = &content[ls..le];
+                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
+                        spans.push((lineno, ls, le));
+                    }
+                    pos = abs + 1;
+                }
+            }
+            if spans.is_empty() {
+                return;
+            }
+            let path_str = path.to_string_lossy();
+            let path_bytes = path_str.as_bytes();
+            let mut shard = shards[idx].lock().unwrap();
+            let start_off = shard.bytes.len();
+            for (ln, ls, le) in spans.iter() {
+                crate::output::pretty::append_plain_match(
+                    &mut shard.bytes,
+                    path_bytes,
+                    *ln,
+                    &content[*ls..*le],
+                    max_cols,
+                );
+            }
+            let end_off = shard.bytes.len();
+            shard.files.push((path_str.into_owned(), start_off, end_off, spans.len()));
+        });
+        let mut all: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+        for (si, s) in shards.iter().enumerate() {
+            let shard = s.lock().unwrap();
+            for (p, st, en, hits) in shard.files.iter() {
+                all.push((p.clone(), si, *st, *en, *hits));
+            }
+        }
+        all.sort_by(|a, b| a.0.cmp(&b.0));
+        let total: usize = all.iter().map(|f| f.4).sum();
+        let nfiles = all.len();
+        let mut out = Vec::with_capacity(all.iter().map(|f| f.3 - f.2).sum());
+        for (_, si, st, en, _) in all {
+            let shard = shards[si].lock().unwrap();
+            out.extend_from_slice(&shard.bytes[st..en]);
+        }
+        (out, total, nfiles)
+    }
+
     /// Streaming walk+search: search each file on the walker's own
     /// threads the moment it is yielded. Removes the walk-then-search
     /// serialization (walk 200 files, then search) plus the mpsc hop

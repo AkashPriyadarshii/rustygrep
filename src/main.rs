@@ -74,11 +74,13 @@ fn main() {
         && engine.can_use_arena();
     if arena_ok {
         use std::io::Write;
-        let files = walker.walk();
-        if files.is_empty() {
+        // Fused: search inside the parallel walker, no walk-collect
+        // + rayon round-trip. Falls back to collected-arena if the
+        // walker yields nothing (same exit-1 semantics).
+        let (bytes, total, nfiles) = engine.search_arena_fused(&walker, cli.max_columns);
+        if total == 0 {
             process::exit(1);
         }
-        let (bytes, total, nfiles) = engine.search_arena(&files, cli.max_columns);
         if cli.stats {
             eprintln!(
                 "{} files matched, {} total matches, {:.3}s",
