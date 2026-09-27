@@ -55,6 +55,47 @@ fn main() {
         cli.threads,
     );
 
+    // Arena fast path: plain --no-color full output with a literal
+    // pattern. Bytes go straight to per-thread arenas, zero per-hit
+    // allocs, files sorted (not hits). Gated: no top/rank/stats-
+    // dependent display, no count/files-only, pretty format only.
+    // Everything else keeps the exact old paths.
+    let arena_ok = cli.no_color
+        && !cli.files_with_matches
+        && !cli.count
+        && !cli.llm
+        && !cli.json
+        && !cli.json_file
+        && matches!(output_format, OutputFormat::Pretty)
+        && cli.top.is_none()
+        && !cli.rank
+        && !cli.context_only
+        && cli.max_matches == 0
+        && engine.can_use_arena();
+    if arena_ok {
+        use std::io::Write;
+        let files = walker.walk();
+        if files.is_empty() {
+            process::exit(1);
+        }
+        let (bytes, total, nfiles) = engine.search_arena(&files, cli.max_columns);
+        if cli.stats {
+            eprintln!(
+                "{} files matched, {} total matches, {:.3}s",
+                nfiles,
+                total,
+                start.elapsed().as_secs_f64()
+            );
+        }
+        if total == 0 {
+            process::exit(1);
+        }
+        let stdout = std::io::stdout();
+        let mut lock = stdout.lock();
+        let _ = lock.write_all(&bytes);
+        let _ = lock.flush();
+        process::exit(0);
+    }
     // Measured (20MB/60-file bench, this machine): streaming walk+search
     // == collect-then-search within noise (±5ms). Keep the streaming path
     // only where it preserves semantics — -l short-circuits per file

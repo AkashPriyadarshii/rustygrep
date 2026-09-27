@@ -9,6 +9,63 @@ const C_LINE: &[u8] = b"\x1b[1;32m"; // bold green
 const C_HIT: &[u8] = b"\x1b[1;31m"; // bold red
 const C_OFF: &[u8] = b"\x1b[0m";
 
+/// Byte-level appender for the arena path: `path:lineno:line\n` with
+/// max_cols truncation, no format!/String. Returns false if the line
+/// must be skipped (binary NUL — mirrors search_path quit semantics).
+/// `line_no` digits inlined for the common <10000 case.
+pub fn append_plain_match(out: &mut Vec<u8>, path: &[u8], line_no: u64, line: &[u8], max_cols: usize) {
+    out.extend_from_slice(path);
+    out.push(b':');
+    let mut numbuf = [0u8; 20];
+    let len = if line_no < 10 {
+        numbuf[0] = b'0' + line_no as u8;
+        1
+    } else if line_no < 100 {
+        numbuf[0] = b'0' + (line_no / 10) as u8;
+        numbuf[1] = b'0' + (line_no % 10) as u8;
+        2
+    } else if line_no < 1000 {
+        numbuf[0] = b'0' + (line_no / 100) as u8;
+        numbuf[1] = b'0' + ((line_no / 10) % 10) as u8;
+        numbuf[2] = b'0' + (line_no % 10) as u8;
+        3
+    } else if line_no < 10000 {
+        numbuf[0] = b'0' + (line_no / 1000) as u8;
+        numbuf[1] = b'0' + ((line_no / 100) % 10) as u8;
+        numbuf[2] = b'0' + ((line_no / 10) % 10) as u8;
+        numbuf[3] = b'0' + (line_no % 10) as u8;
+        4
+    } else {
+        let mut tmp = [0u8; 20];
+        let mut v = line_no;
+        let mut l = 0;
+        while v > 0 {
+            tmp[l] = b'0' + (v % 10) as u8;
+            v /= 10;
+            l += 1;
+        }
+        let mut i = 0;
+        while i < l {
+            numbuf[i] = tmp[l - 1 - i];
+            i += 1;
+        }
+        l
+    };
+    out.extend_from_slice(&numbuf[..len]);
+    out.push(b':');
+    // Truncate at max_cols on a UTF-8 boundary (ASCII fast check).
+    let mut end = if max_cols > 0 && line.len() > max_cols {
+        max_cols
+    } else {
+        line.len()
+    };
+    while end > 0 && end < line.len() && (line[end] & 0xC0) == 0x80 {
+        end -= 1;
+    }
+    out.extend_from_slice(&line[..end]);
+    out.push(b'\n');
+}
+
 /// Truncate a string to `max_cols` bytes at a UTF-8 char boundary.
 fn truncate_line(line: &str, max_cols: usize) -> &str {
     if max_cols == 0 || line.len() <= max_cols {

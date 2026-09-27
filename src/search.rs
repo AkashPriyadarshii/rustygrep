@@ -91,6 +91,10 @@ fn literal_bytes(pattern: &str) -> Option<Vec<u8>> {
 /// with memchr(b'\n'), confirm each with memmem. Valid only when the
 /// matcher is a plain case-sensitive literal with no word/invert/
 /// context flags (checked by the caller) — then memmem == regex.
+///
+/// Arena variant: appends `path:lineno:line\n` bytes straight into
+/// `arena` and returns only (line_number, start, end) spans — zero
+/// per-hit String allocs. `count_only` appends nothing (totals only).
 fn search_literal_lines(
     content: &[u8],
     finder: &memchr::memmem::Finder,
@@ -277,6 +281,13 @@ pub struct SearchEngine {
 }
 
 impl SearchEngine {
+    /// True when the arena fast path is valid: literal path is active
+    /// (implies no context/invert/word/ignore-case/span flags) plus
+    /// plain full-output mode with no ranking or truncation-bypass.
+    pub fn can_use_arena(&self) -> bool {
+        self.fast_literal.is_some()
+    }
+
     pub fn new(cli: &Cli) -> Result<Self, Box<dyn std::error::Error>> {
         let mut pattern = cli.pattern.clone().ok_or("pattern is required")?;
 
@@ -362,6 +373,114 @@ impl SearchEngine {
             .collect();
         final_results.sort_by(|a, b| a.path.cmp(&b.path));
         final_results
+    }
+
+    /// Arena fast path for plain `--no-color` full output: each rayon
+    /// thread owns a byte arena; matching bytes are appended per file
+    /// (`path:lineno:line\n`) with zero per-hit String allocs. Sorts
+    /// FILES only (matches are sequential by construction), then
+    /// writes shards in order with one write_all each.
+    /// Returns (bytes_in_order, total_matches, files_matched).
+    /// Valid only when: literal fast path active, no count/files-only,
+    /// no top/rank/context (checked by caller in main).
+    pub fn search_arena(&self, files: &[PathBuf], max_cols: usize) -> (Vec<u8>, usize, usize) {
+        struct Shard {
+            bytes: Vec<u8>,
+            // (path, start, end, hits) — path owned for final sort.
+            files: Vec<(String, usize, usize, usize)>,
+        }
+        let n = rayon::current_num_threads().max(1);
+        let shards: Vec<Mutex<Shard>> = (0..n)
+            .map(|_| {
+                Mutex::new(Shard {
+                    bytes: Vec::with_capacity(1 << 20),
+                    files: Vec::new(),
+                })
+            })
+            .collect();
+        let lit = self.fast_literal.clone().unwrap_or_default();
+        let finder = memchr::memmem::Finder::new(&lit);
+        files.par_iter().for_each(|path| {
+            let idx = rayon::current_thread_index().unwrap_or(0) % n;
+            let content = match std::fs::read(path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            // Candidate-line walk inlined here to append directly:
+            // collect (lineno, ls, le) spans, then append bytes.
+            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
+            {
+                let mut lineno: u64 = 1;
+                let mut start = 0;
+                let mut pos = 0;
+                let mut last_ls = usize::MAX;
+                while pos < content.len() {
+                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
+                        Some(r) => r,
+                        None => break,
+                    };
+                    let abs = pos + rel;
+                    if content[abs] == b'\x00' {
+                        return; // binary quit
+                    }
+                    let mut ls = abs;
+                    while ls > 0 && content[ls - 1] != b'\n' {
+                        ls -= 1;
+                    }
+                    if ls == last_ls {
+                        pos = abs + 1;
+                        continue;
+                    }
+                    last_ls = ls;
+                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
+                    let mut le = abs;
+                    while le < content.len() && content[le] != b'\n' {
+                        le += 1;
+                    }
+                    start = if le < content.len() { le + 1 } else { content.len() };
+                    let line = &content[ls..le];
+                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
+                        spans.push((lineno, ls, le));
+                    }
+                    pos = abs + 1;
+                }
+            }
+            if spans.is_empty() {
+                return;
+            }
+            let path_str = path.to_string_lossy();
+            let path_bytes = path_str.as_bytes();
+            let mut shard = shards[idx].lock().unwrap();
+            let start_off = shard.bytes.len();
+            for (ln, ls, le) in spans.iter() {
+                crate::output::pretty::append_plain_match(
+                    &mut shard.bytes,
+                    path_bytes,
+                    *ln,
+                    &content[*ls..*le],
+                    max_cols,
+                );
+            }
+            let end_off = shard.bytes.len();
+            shard.files.push((path_str.into_owned(), start_off, end_off, spans.len()));
+        });
+        // Merge: sort files by path, concat slices in order.
+        let mut all: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+        for (si, s) in shards.iter().enumerate() {
+            let shard = s.lock().unwrap();
+            for (p, st, en, hits) in shard.files.iter() {
+                all.push((p.clone(), si, *st, *en, *hits));
+            }
+        }
+        all.sort_by(|a, b| a.0.cmp(&b.0));
+        let total: usize = all.iter().map(|f| f.4).sum();
+        let nfiles = all.len();
+        let mut out = Vec::with_capacity(all.iter().map(|f| f.3 - f.2).sum());
+        for (_, si, st, en, _) in all {
+            let shard = shards[si].lock().unwrap();
+            out.extend_from_slice(&shard.bytes[st..en]);
+        }
+        (out, total, nfiles)
     }
 
     /// Streaming walk+search: search each file on the walker's own
