@@ -88,8 +88,12 @@ fn main() {
         && engine.can_use_arena();
     if llm_arena_ok {
         use std::io::Write;
+        let files = walker.walk();
+        if files.is_empty() {
+            process::exit(1);
+        }
         let (bytes, total, nfiles) = engine.search_arena_llm(
-            &walker,
+            &files,
             if cli.llm_no_truncate { 0 } else { 120 },
             !cli.llm_no_truncate,
         );
@@ -112,10 +116,14 @@ fn main() {
     }
     if arena_ok {
         use std::io::Write;
-        // Fused: search inside the parallel walker, no walk-collect
-        // + rayon round-trip. Falls back to collected-arena if the
-        // walker yields nothing (same exit-1 semantics).
-        let (bytes, total, nfiles) = engine.search_arena_fused(&walker, cli.max_columns);
+        // Walk-collect once, then rayon par_iter over files.
+        // One pool (rayon), NUL-safe literal walk, zero per-hit
+        // Strings; same exit-1 semantics on empty walks.
+        let files = walker.walk();
+        if files.is_empty() {
+            process::exit(1);
+        }
+        let (bytes, total, nfiles) = engine.search_arena_fused(&files, cli.max_columns);
         if total == 0 {
             process::exit(1);
         }

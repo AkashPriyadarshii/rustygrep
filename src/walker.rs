@@ -1,7 +1,5 @@
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::thread;
 
 pub struct FileWalker {
     paths: Vec<PathBuf>,
@@ -34,55 +32,41 @@ impl FileWalker {
         }
     }
 
+    /// Sync single-threaded walk: same WalkBuilder, no spawn + no
+    /// mpsc hop. The old version paid a thread spawn, a channel send
+    /// per file, and a second pass collecting — ~10ms on 200 files.
+    /// Parallelism lives in the search phase (rayon/fused), not here.
     pub fn walk(&self) -> Vec<PathBuf> {
-        let (tx, rx) = mpsc::channel();
         let thread_count = if self.threads == 0 {
             num_cpus()
         } else {
             self.threads
         };
-
-        let hidden = self.hidden;
-        let no_ignore = self.no_ignore;
-        let no_binary = self.no_binary;
-        let file_type = self.file_type.clone();
-        let file_type_not = self.file_type_not.clone();
-        let paths = self.paths.clone();
-
-        thread::spawn(move || {
-            // max_filesize: skip the 10MB+ probe in is_binary for the
-            // common case (walker never yields huge files when set).
-            let mut builder = WalkBuilder::new(&paths[0]);
-            builder
-                .hidden(!hidden)
-                .ignore(!no_ignore)
-                .git_ignore(!no_ignore)
-                .git_global(!no_ignore)
-                .git_exclude(!no_ignore)
-                .require_git(!no_ignore)
-                .max_filesize(Some(10_000_000))
-                .threads(thread_count);
-            for p in &paths[1..] {
-                builder.add(p);
+        let mut builder = WalkBuilder::new(&self.paths[0]);
+        builder
+            .hidden(!self.hidden)
+            .ignore(!self.no_ignore)
+            .git_ignore(!self.no_ignore)
+            .git_global(!self.no_ignore)
+            .git_exclude(!self.no_ignore)
+            .require_git(!self.no_ignore)
+            .max_filesize(Some(10_000_000))
+            .threads(thread_count);
+        for p in &self.paths[1..] {
+            builder.add(p);
+        }
+        let mut out = Vec::with_capacity(256);
+        for entry in builder.build().flatten() {
+            let path = entry.path();
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+                continue;
             }
-            let walker = builder.build();
-
-            for entry in walker.flatten() {
-                let path = entry.path();
-
-                if entry.file_type().is_some_and(|ft| ft.is_dir()) {
-                    continue;
-                }
-
-                if !Self::keep(path, no_binary, &file_type, &file_type_not) {
-                    continue;
-                }
-
-                let _ = tx.send(path.to_path_buf());
+            if !Self::keep(path, self.no_binary, &self.file_type, &self.file_type_not) {
+                continue;
             }
-        });
-
-        rx.iter().collect()
+            out.push(path.to_path_buf());
+        }
+        out
     }
 
     /// Parallel streaming walk: `f` runs on each file as it is found,

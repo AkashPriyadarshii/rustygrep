@@ -28,6 +28,65 @@ pub struct FileMatches {
     pub total_matches: usize,
 }
 
+/// Shared single-pass line scan for the literal fast path.
+/// memchr the first needle byte, bound the candidate line with
+/// memrchr/memchr, confirm with the memmem Finder. Pushes
+/// spans in order, NUL-safe. All arenas + counters share this.
+#[inline]
+fn line_spans(content: &[u8], lit: &[u8], finder: &memchr::memmem::Finder) -> Option<Vec<(u64, usize, usize)>> {
+    // Skip lines that can't hold the needle: a line shorter than the
+    // literal is never a candidate. memchr(\n) jumps straight to the
+    // next line — short filler lines cost one scan, zero slicing.
+    let n = lit.len();
+    let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
+    let mut lineno: u64 = 1;
+    let mut ls = 0; // current line start
+    let mut pos = 0;
+    while pos < content.len() {
+        let rel = match memchr::memchr(lit[0], &content[pos..]) {
+            Some(r) => r,
+            None => break,
+        };
+        let abs = pos + rel;
+        // Line containing abs: memrchr back, memchr forward.
+        let cur = match memchr::memrchr(b'\n', &content[..abs]) {
+            Some(i) => i + 1,
+            None => 0,
+        };
+        if cur != ls {
+            // Newlines crossed since the last candidate line.
+            lineno += memchr::memchr_iter(b'\n', &content[ls..cur]).count() as u64;
+            ls = cur;
+        }
+        let le = match memchr::memchr(b'\n', &content[abs..]) {
+            Some(rel2) => abs + rel2,
+            None => content.len(),
+        };
+        // Short-line skip: line can't hold the needle. Jump past
+        // it entirely — no Finder, one memchr eaten.
+        if le - ls < n {
+            pos = le + 1;
+            lineno += 1;
+            ls = pos.min(content.len());
+            continue;
+        }
+        let line = &content[ls..le];
+        // rg parity (verified vs rg 15.2): a NUL in a MATCHING
+        // line suppresses that line; a NUL in a non-matching line
+        // is invisible. So: Finder first, NUL check only on hits.
+        // Non-matching lines (the 99% case) pay zero NUL scans.
+        if finder.find(line).is_some() && !line.contains(&b'\x00') {
+            spans.push((lineno, ls, le));
+        }
+        // Line done either way: jump past le. A second lit[0]
+        // on the same line can never start a NEW match line.
+        pos = le + 1;
+        lineno += 1;
+        ls = pos.min(content.len());
+    }
+    Some(spans)
+}
+
 /// Collects matches and context lines from the searcher.
 struct MatchCollector<'a> {
     /// Empty when no printer needs per-match paths (borrow parent's
@@ -100,7 +159,7 @@ fn search_literal_lines(
     finder: &memchr::memmem::Finder,
     count_only: bool,
 ) -> Vec<(u64, String)> {
-    let mut out = Vec::with_capacity(1024);
+    let mut out = Vec::with_capacity(256);
     let mut lineno: u64 = 1;
     let mut start = 0;
     // Skip lines that can't contain the literal without slicing them:
@@ -144,10 +203,12 @@ fn search_literal_lines(
         if content[abs] == b'\x00' {
             return Vec::new(); // binary quit, matches search_path
         }
-        let mut ls = abs;
-        while ls > 0 && content[ls - 1] != b'\n' {
-            ls -= 1;
-        }
+        // memrchr for the line start: SIMD-backed, beats the
+        // byte-at-a-time backward loop on long lines.
+        let ls = match memchr::memrchr(b'\n', &content[..abs]) {
+            Some(i) => i + 1,
+            None => 0,
+        };
         if ls == last_ls {
             pos = abs + 1;
             continue;
@@ -155,10 +216,10 @@ fn search_literal_lines(
         last_ls = ls;
         // Newlines crossed since the last candidate line.
         lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
-        let mut le = abs;
-        while le < content.len() && content[le] != b'\n' {
-            le += 1;
-        }
+        let le = match memchr::memchr(b'\n', &content[abs..]) {
+            Some(rel2) => abs + rel2,
+            None => content.len(),
+        };
         start = if le < content.len() { le + 1 } else { content.len() };
         let line = &content[ls..le];
         if !line.contains(&b'\x00') && finder.find(line).is_some() {
@@ -355,20 +416,12 @@ impl SearchEngine {
     }
 
     pub fn search(&self, files: &[PathBuf]) -> Vec<FileMatches> {
-        // Sharded results: one Vec per rayon thread, concatenated at
-        // the end. Kills the Mutex lock/unlock per file (200 files =
-        // 200 lock round-trips on the hot path).
-        let shards: Vec<Mutex<Vec<FileMatches>>> = (0..rayon::current_num_threads())
-            .map(|_| Mutex::new(Vec::new()))
-            .collect();
-        files.par_iter().for_each(|path| {
-            let idx =
-                rayon::current_thread_index().unwrap_or(0) % shards.len().max(1);
-            self.push_hit(path, &shards[idx]);
-        });
-        let mut final_results: Vec<FileMatches> = shards
-            .into_iter()
-            .flat_map(|s| s.into_inner().unwrap_or_default())
+        // No intermediate shard Vecs: rayon collects each thread's
+        // iterator output directly (filter_map is lazy per element).
+        // One final sort by path. Fewer allocs than shard+concat.
+        let mut final_results: Vec<FileMatches> = files
+            .par_iter()
+            .filter_map(|path| self.search_file(path))
             .collect();
         final_results.sort_by(|a, b| a.path.cmp(&b.path));
         final_results
@@ -407,43 +460,10 @@ impl SearchEngine {
             };
             // Candidate-line walk inlined here to append directly:
             // collect (lineno, ls, le) spans, then append bytes.
-            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
-            {
-                let mut lineno: u64 = 1;
-                let mut start = 0;
-                let mut pos = 0;
-                let mut last_ls = usize::MAX;
-                while pos < content.len() {
-                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
-                        Some(r) => r,
-                        None => break,
-                    };
-                    let abs = pos + rel;
-                    if content[abs] == b'\x00' {
-                        return; // binary quit
-                    }
-                    let mut ls = abs;
-                    while ls > 0 && content[ls - 1] != b'\n' {
-                        ls -= 1;
-                    }
-                    if ls == last_ls {
-                        pos = abs + 1;
-                        continue;
-                    }
-                    last_ls = ls;
-                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
-                    let mut le = abs;
-                    while le < content.len() && content[le] != b'\n' {
-                        le += 1;
-                    }
-                    start = if le < content.len() { le + 1 } else { content.len() };
-                    let line = &content[ls..le];
-                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
-                        spans.push((lineno, ls, le));
-                    }
-                    pos = abs + 1;
-                }
-            }
+            let spans = match line_spans(&content, &lit, &finder) {
+                Some(s) => s,
+                None => return, // binary quit
+            };
             if spans.is_empty() {
                 return;
             }
@@ -493,7 +513,7 @@ impl SearchEngine {
     /// Budget mode falls back to the Match path (char counting).
     pub fn search_arena_llm(
         &self,
-        walker: &FileWalker,
+        files: &[PathBuf],
         max_line_chars: usize,
         truncate: bool,
     ) -> (Vec<u8>, usize, usize) {
@@ -501,7 +521,7 @@ impl SearchEngine {
             bytes: Vec<u8>,
             files: Vec<(String, usize, usize, usize)>,
         }
-        let n = 4;
+        let n = rayon::current_num_threads().max(1);
         let shards: Vec<Mutex<Shard>> = (0..n)
             .map(|_| {
                 Mutex::new(Shard {
@@ -512,50 +532,16 @@ impl SearchEngine {
             .collect();
         let lit = self.fast_literal.clone().unwrap_or_default();
         let finder = memchr::memmem::Finder::new(&lit);
-        let next = std::sync::atomic::AtomicUsize::new(0);
-        walker.walk_parallel(|path| {
-            let idx = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
+        files.par_iter().for_each(|path| {
+            let idx = rayon::current_thread_index().unwrap_or(0) % n;
             let content = match std::fs::read(path) {
                 Ok(c) => c,
                 Err(_) => return,
             };
-            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
-            {
-                let mut lineno: u64 = 1;
-                let mut start = 0;
-                let mut pos = 0;
-                let mut last_ls = usize::MAX;
-                while pos < content.len() {
-                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
-                        Some(r) => r,
-                        None => break,
-                    };
-                    let abs = pos + rel;
-                    if content[abs] == b'\x00' {
-                        return;
-                    }
-                    let mut ls = abs;
-                    while ls > 0 && content[ls - 1] != b'\n' {
-                        ls -= 1;
-                    }
-                    if ls == last_ls {
-                        pos = abs + 1;
-                        continue;
-                    }
-                    last_ls = ls;
-                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
-                    let mut le = abs;
-                    while le < content.len() && content[le] != b'\n' {
-                        le += 1;
-                    }
-                    start = if le < content.len() { le + 1 } else { content.len() };
-                    let line = &content[ls..le];
-                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
-                        spans.push((lineno, ls, le));
-                    }
-                    pos = abs + 1;
-                }
-            }
+            let spans = match line_spans(&content, &lit, &finder) {
+                Some(s) => s,
+                None => return, // binary quit
+            };
             if spans.is_empty() {
                 return;
             }
@@ -636,12 +622,12 @@ impl SearchEngine {
         (out, total, nfiles)
     }
 
-    pub fn search_arena_fused(&self, walker: &FileWalker, max_cols: usize) -> (Vec<u8>, usize, usize) {
+    pub fn search_arena_fused(&self, files: &[PathBuf], max_cols: usize) -> (Vec<u8>, usize, usize) {
         struct Shard {
             bytes: Vec<u8>,
             files: Vec<(String, usize, usize, usize)>,
         }
-        let n = 4;
+        let n = rayon::current_num_threads().max(1);
         let shards: Vec<Mutex<Shard>> = (0..n)
             .map(|_| {
                 Mutex::new(Shard {
@@ -652,50 +638,16 @@ impl SearchEngine {
             .collect();
         let lit = self.fast_literal.clone().unwrap_or_default();
         let finder = memchr::memmem::Finder::new(&lit);
-        let next = std::sync::atomic::AtomicUsize::new(0);
-        walker.walk_parallel(|path| {
-            let idx = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
+        files.par_iter().for_each(|path| {
+            let idx = rayon::current_thread_index().unwrap_or(0) % n;
             let content = match std::fs::read(path) {
                 Ok(c) => c,
                 Err(_) => return,
             };
-            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
-            {
-                let mut lineno: u64 = 1;
-                let mut start = 0;
-                let mut pos = 0;
-                let mut last_ls = usize::MAX;
-                while pos < content.len() {
-                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
-                        Some(r) => r,
-                        None => break,
-                    };
-                    let abs = pos + rel;
-                    if content[abs] == b'\x00' {
-                        return;
-                    }
-                    let mut ls = abs;
-                    while ls > 0 && content[ls - 1] != b'\n' {
-                        ls -= 1;
-                    }
-                    if ls == last_ls {
-                        pos = abs + 1;
-                        continue;
-                    }
-                    last_ls = ls;
-                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
-                    let mut le = abs;
-                    while le < content.len() && content[le] != b'\n' {
-                        le += 1;
-                    }
-                    start = if le < content.len() { le + 1 } else { content.len() };
-                    let line = &content[ls..le];
-                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
-                        spans.push((lineno, ls, le));
-                    }
-                    pos = abs + 1;
-                }
-            }
+            let spans = match line_spans(&content, &lit, &finder) {
+                Some(s) => s,
+                None => return, // binary quit
+            };
             if spans.is_empty() {
                 return;
             }
@@ -931,7 +883,7 @@ impl SearchEngine {
             max_matches: self.max_matches,
             need_submatches: self.need_submatches,
             keep_prefix: self.keep_prefix,
-            matches: Vec::with_capacity(1024),
+            matches: Vec::with_capacity(256),
         };
 
         let _ = searcher.search_path(self.matcher.clone(), path, &mut collector);
