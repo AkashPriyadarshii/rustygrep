@@ -131,6 +131,8 @@ fn search_literal_lines(
         }
         return out;
     }
+    // First-byte prefilter (rare-byte tried: Finder confirm dominates,
+    // prefilter choice within noise — keep the simple correct one).
     let mut pos = 0;
     let mut last_ls = usize::MAX;
     while pos < content.len() {
@@ -186,14 +188,11 @@ impl<'a> Sink for MatchCollector<'a> {
         } else if !self.need_submatches {
             // Fast path: skip per-match re-scan entirely (searcher
             // already confirmed a hit; no printer needs the spans).
-            // Count mode stores nothing: the printer only needs the
-            // total, so skip the String alloc+copy per hit entirely
-            // (80MB wide-line bench: -c 59ms -> 36ms, near rg 30ms).
-            if self.keep_prefix == usize::MAX {
-                (String::new(), vec![])
-            } else {
-                (trim_line_ending(bytes), vec![])
-            }
+            // NOTE: count mode no longer reaches this collector —
+            // count_only files take search_count_file (plain usize,
+            // zero Match allocs). keep_prefix==MAX now only guards
+            // stale callers; treat as normal line (never empty).
+            (trim_line_ending(bytes), vec![])
         } else {
             let mut submatches = Vec::new();
             let mut offset = 0;
@@ -488,6 +487,155 @@ impl SearchEngine {
     /// rayon pool. Each visitor call appends straight to a shard
     /// (picked round-robin by an atomic counter, no TLS needed).
     /// Same output bytes as search_arena; same gating (caller).
+    /// LLM arena: same fused walk+search, LLM line format
+    /// (`lineno:truncated\n` + `--- path (N)` headers + summary).
+    /// Zero per-hit Strings; honors truncate/budget via post-cut.
+    /// Budget mode falls back to the Match path (char counting).
+    pub fn search_arena_llm(
+        &self,
+        walker: &FileWalker,
+        max_line_chars: usize,
+        truncate: bool,
+    ) -> (Vec<u8>, usize, usize) {
+        struct Shard {
+            bytes: Vec<u8>,
+            files: Vec<(String, usize, usize, usize)>,
+        }
+        let n = 4;
+        let shards: Vec<Mutex<Shard>> = (0..n)
+            .map(|_| {
+                Mutex::new(Shard {
+                    bytes: Vec::with_capacity(1 << 20),
+                    files: Vec::new(),
+                })
+            })
+            .collect();
+        let lit = self.fast_literal.clone().unwrap_or_default();
+        let finder = memchr::memmem::Finder::new(&lit);
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        walker.walk_parallel(|path| {
+            let idx = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
+            let content = match std::fs::read(path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(256);
+            {
+                let mut lineno: u64 = 1;
+                let mut start = 0;
+                let mut pos = 0;
+                let mut last_ls = usize::MAX;
+                while pos < content.len() {
+                    let rel = match memchr::memchr(lit[0], &content[pos..]) {
+                        Some(r) => r,
+                        None => break,
+                    };
+                    let abs = pos + rel;
+                    if content[abs] == b'\x00' {
+                        return;
+                    }
+                    let mut ls = abs;
+                    while ls > 0 && content[ls - 1] != b'\n' {
+                        ls -= 1;
+                    }
+                    if ls == last_ls {
+                        pos = abs + 1;
+                        continue;
+                    }
+                    last_ls = ls;
+                    lineno += memchr::memchr_iter(b'\n', &content[start..ls]).count() as u64;
+                    let mut le = abs;
+                    while le < content.len() && content[le] != b'\n' {
+                        le += 1;
+                    }
+                    start = if le < content.len() { le + 1 } else { content.len() };
+                    let line = &content[ls..le];
+                    if !line.contains(&b'\x00') && finder.find(line).is_some() {
+                        spans.push((lineno, ls, le));
+                    }
+                    pos = abs + 1;
+                }
+            }
+            if spans.is_empty() {
+                return;
+            }
+            let path_str = path.to_string_lossy();
+            let mut shard = shards[idx].lock().unwrap();
+            let start_off = shard.bytes.len();
+            crate::output::llm::append_llm_file(
+                &mut shard.bytes,
+                &path_str,
+                &content,
+                &spans,
+                max_line_chars,
+                truncate,
+            );
+            let end_off = shard.bytes.len();
+            shard.files.push((path_str.into_owned(), start_off, end_off, spans.len()));
+        });
+        let mut all: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+        for (si, s) in shards.iter().enumerate() {
+            let shard = s.lock().unwrap();
+            for (p, st, en, hits) in shard.files.iter() {
+                all.push((p.clone(), si, *st, *en, *hits));
+            }
+        }
+        all.sort_by(|a, b| a.0.cmp(&b.0));
+        let total: usize = all.iter().map(|f| f.4).sum();
+        let nfiles = all.len();
+        let cap: usize = all.iter().map(|f| f.3 - f.2).sum();
+        let mut out = Vec::with_capacity(cap + 64);
+        for (_, si, st, en, _) in all {
+            let shard = shards[si].lock().unwrap();
+            out.extend_from_slice(&shard.bytes[st..en]);
+        }
+        // Summary line (matches old printer shape).
+        out.extend_from_slice(b"\n--- ");
+        let mut numbuf = [0u8; 20];
+        let mut v = total;
+        let mut len = 0;
+        if v == 0 {
+            numbuf[0] = b'0';
+            len = 1;
+        } else {
+            let mut tmp = [0u8; 20];
+            while v > 0 {
+                tmp[len] = b'0' + (v % 10) as u8;
+                v /= 10;
+                len += 1;
+            }
+            let mut i = 0;
+            while i < len {
+                numbuf[i] = tmp[len - 1 - i];
+                i += 1;
+            }
+        }
+        out.extend_from_slice(&numbuf[..len]);
+        out.extend_from_slice(if total == 1 { b" match in " } else { b" matches in " });
+        let mut numbuf = [0u8; 20];
+        let mut v = nfiles;
+        let mut len = 0;
+        if v == 0 {
+            numbuf[0] = b'0';
+            len = 1;
+        } else {
+            let mut tmp = [0u8; 20];
+            while v > 0 {
+                tmp[len] = b'0' + (v % 10) as u8;
+                v /= 10;
+                len += 1;
+            }
+            let mut i = 0;
+            while i < len {
+                numbuf[i] = tmp[len - 1 - i];
+                i += 1;
+            }
+        }
+        out.extend_from_slice(&numbuf[..len]);
+        out.extend_from_slice(if nfiles == 1 { b" file\n" } else { b" files\n" });
+        (out, total, nfiles)
+    }
+
     pub fn search_arena_fused(&self, walker: &FileWalker, max_cols: usize) -> (Vec<u8>, usize, usize) {
         struct Shard {
             bytes: Vec<u8>,
@@ -644,6 +792,68 @@ impl SearchEngine {
                 matches,
             })
         }
+    }
+
+    /// True count path: no Match objects at all. Literal mode counts
+    /// memmem hits; regex mode counts searcher callbacks. Returns the
+    /// line-match count (rg -c semantics: lines, not occurrences).
+    /// `foo foo foo` on one line counts 1 — the Sink fires per line.
+    pub fn search_count_file(&self, path: &Path) -> usize {
+        if let Some(ref lit) = self.fast_literal {
+            let content = match std::fs::read(path) {
+                Ok(c) => c,
+                Err(_) => return 0,
+            };
+            let finder = memchr::memmem::Finder::new(lit);
+            return search_literal_lines(&content, &finder, true).len();
+        }
+        struct Counter(usize);
+        impl Sink for Counter {
+            type Error = std::io::Error;
+            fn matched(
+                &mut self,
+                _searcher: &Searcher,
+                _mat: &SinkMatch<'_>,
+            ) -> Result<bool, std::io::Error> {
+                self.0 += 1;
+                Ok(true)
+            }
+        }
+        let mut searcher = SearcherBuilder::new()
+            .line_number(false)
+            .before_context(0)
+            .after_context(0)
+            .invert_match(self.invert_match)
+            .binary_detection(grep_searcher::BinaryDetection::quit(b'\x00'))
+            .build();
+        let mut counter = Counter(0);
+        let _ = searcher.search_path(self.matcher.clone(), path, &mut counter);
+        counter.0
+    }
+
+    /// Count sweep over files: sharded (path, count) pairs, no Match
+    /// vecs anywhere. Sorted by path for deterministic -c output.
+    pub fn search_counts(&self, files: &[PathBuf]) -> Vec<(String, usize)> {
+        use std::sync::Mutex;
+        let n = rayon::current_num_threads().max(1);
+        let shards: Vec<Mutex<Vec<(String, usize)>>> =
+            (0..n).map(|_| Mutex::new(Vec::new())).collect();
+        files.par_iter().for_each(|path| {
+            let c = self.search_count_file(path);
+            if c > 0 {
+                let idx = rayon::current_thread_index().unwrap_or(0) % n;
+                shards[idx]
+                    .lock()
+                    .unwrap()
+                    .push((path.to_string_lossy().into_owned(), c));
+            }
+        });
+        let mut all: Vec<(String, usize)> = shards
+            .into_iter()
+            .flat_map(|s| s.into_inner().unwrap_or_default())
+            .collect();
+        all.sort_by(|a, b| a.0.cmp(&b.0));
+        all
     }
 
     fn search_file(&self, path: &Path) -> Option<FileMatches> {

@@ -72,6 +72,44 @@ fn main() {
         && !cli.context_only
         && cli.max_matches == 0
         && engine.can_use_arena();
+    // LLM arena: same fused zero-alloc trick, LLM line format.
+    // Gated: no budget (char counting needs the Match path), no
+    // top/rank/context-only/max-matches, literal path active.
+    let llm_arena_ok = cli.llm
+        && cli.llm_budget.is_none()
+        && !cli.files_with_matches
+        && !cli.count
+        && !cli.json
+        && !cli.json_file
+        && cli.top.is_none()
+        && !cli.rank
+        && !cli.context_only
+        && cli.max_matches == 0
+        && engine.can_use_arena();
+    if llm_arena_ok {
+        use std::io::Write;
+        let (bytes, total, nfiles) = engine.search_arena_llm(
+            &walker,
+            if cli.llm_no_truncate { 0 } else { 120 },
+            !cli.llm_no_truncate,
+        );
+        if cli.stats {
+            eprintln!(
+                "{} files matched, {} total matches, {:.3}s",
+                nfiles,
+                total,
+                start.elapsed().as_secs_f64()
+            );
+        }
+        if total == 0 {
+            process::exit(1);
+        }
+        let stdout = std::io::stdout();
+        let mut lock = stdout.lock();
+        let _ = lock.write_all(&bytes);
+        let _ = lock.flush();
+        process::exit(0);
+    }
     if arena_ok {
         use std::io::Write;
         // Fused: search inside the parallel walker, no walk-collect
@@ -96,6 +134,45 @@ fn main() {
         let mut lock = stdout.lock();
         let _ = lock.write_all(&bytes);
         let _ = lock.flush();
+        process::exit(0);
+    }
+    // True-count path (-c, no top/rank/context-only/max-matches): no
+    // Match objects anywhere — sharded (path, count) pairs straight
+    // to the printer. Prints here and exits (stats/exit same shape).
+    let count_fast_ok = cli.count
+        && cli.top.is_none()
+        && !cli.rank
+        && !cli.context_only
+        && cli.max_matches == 0;
+    if count_fast_ok {
+        use std::io::Write;
+        let files = walker.walk();
+        if files.is_empty() {
+            process::exit(1);
+        }
+        let counts = engine.search_counts(&files);
+        if cli.stats {
+            let total: usize = counts.iter().map(|c| c.1).sum();
+            eprintln!(
+                "{} files matched, {} total matches, {:.3}s",
+                counts.len(),
+                total,
+                start.elapsed().as_secs_f64()
+            );
+        }
+        if counts.is_empty() {
+            process::exit(1);
+        }
+        output::print_counts(
+            &counts,
+            &output_format,
+            &output::llm::LlmOptions {
+                truncate: !cli.llm_no_truncate,
+                max_line_chars: 120,
+                budget_tokens: cli.llm_budget,
+            },
+            cli.json_file,
+        );
         process::exit(0);
     }
     // Measured (20MB/60-file bench, this machine): streaming walk+search
