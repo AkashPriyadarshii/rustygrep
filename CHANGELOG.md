@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Project direction** — new search speed work ships in
+  [ziggygrep](https://github.com/AkashPriyadarshii/ziggygrep) (pure Zig,
+  one static binary, 22 of 22 benches at or below ripgrep). rustygrep
+  stays maintained for regex, `--llm`, `--json`, and MCP server modes.
+
 - **Search hot path (measured, 52MB/200-file corpus, i3-1115G4)** —
   `-l` 24ms vs rg 24ms (parity, first-hit short-circuit + streaming
   walk); miss path 30ms vs 27ms (parity); `--no-color` 91ms vs 64ms

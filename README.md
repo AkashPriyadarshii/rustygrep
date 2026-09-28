@@ -14,6 +14,8 @@ robots: index, follow
 
 **The token-efficient grep for AI coding agents.** Compressed output, fewer tokens, more context room.
 
+> **Future lives in ziggygrep.** New search speed work ships in [ziggygrep](https://github.com/AkashPriyadarshii/ziggygrep) (pure Zig, one static binary, 22 of 22 benches at or below ripgrep). rustygrep stays maintained for its regex, `--llm`, `--json`, and MCP server modes. New users who want raw literal speed: start with ziggygrep.
+
 [![crates.io](https://img.shields.io/crates/v/rustygrep?color=%23CE422B&style=flat-square&logo=rust)](https://crates.io/crates/rustygrep)
 [![Downloads](https://img.shields.io/crates/d/rustygrep?color=%23CE422B&style=flat-square)](https://crates.io/crates/rustygrep)
 [![Downloads/month](https://img.shields.io/crates/drv/rustygrep?color=%23CE422B&style=flat-square)](https://crates.io/crates/rustygrep)
@@ -43,6 +45,8 @@ src/main.rs:43:        items.iter().map(|i| i.price).sum()
 ```
 
 **60-95% fewer tokens. Same information. Zero config.**
+
+Speed note: on raw literal search ziggygrep now beats both tools (22 of 22 cases at or below rg on the same corpus). rustygrep keeps the lead where agents need `--llm`, `--json`, regex, and MCP.
 
 ## Features
 
@@ -209,6 +213,8 @@ while staying within ~2x of ripgrep's speed on this box.
 
 ## Comparison with Alternatives
 
+For raw literal speed, use [ziggygrep](https://github.com/AkashPriyadarshii/ziggygrep): 22 of 22 bench cases at or below ripgrep with byte-identical output. The table below covers feature breadth, where rustygrep still leads on agent modes.
+
 | Feature | grep | ripgrep | **rustygrep** | **rustygrep --llm** |
 |---------|------|---------|---------------|---------------------|
 | Speed | Slow | Fast | Fast | Fast |
@@ -324,6 +330,8 @@ MIT License. See [LICENSE-MIT](LICENSE-MIT) for details.
 <div align="center">
 
 **Made with Rust and care for AI agents**
+
+Need raw literal speed with zero agent modes? [ziggygrep](https://github.com/AkashPriyadarshii/ziggygrep) is the main line now: all future speed features land there.
 
 [Star on GitHub](https://github.com/AkashPriyadarshii/rustygrep) | [Report Issues](https://github.com/AkashPriyadarshii/rustygrep/issues) | [Crates.io](https://crates.io/crates/rustygrep)
 
