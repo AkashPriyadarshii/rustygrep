@@ -1,8 +1,15 @@
 <!-- SEO: rustygrep — fast grep with AI-native, token-compressed output for LLM coding agents.
-description: rustygrep is a drop-in ripgrep alternative written in Rust. The --llm flag compresses grep output 60-95% so AI coding agents burn fewer context-window tokens. Built-in MCP server wires rustygrep into Claude Code, Cursor, and OpenCode. SIMD-accelerated parallel search, gitignore-aware, zero config. Install with cargo install rustygrep.
+description: rustygrep is a drop-in ripgrep alternative written in Rust. NOTE: archived, all new work ships in ziggygrep. The --llm flag compresses grep output 60-95% so AI coding agents burn fewer context-window tokens. Built-in MCP server wires rustygrep into Claude Code, Cursor, and OpenCode. SIMD-accelerated parallel search, gitignore-aware, zero config. Install with cargo install rustygrep.
 keywords: rustygrep, fast grep, ripgrep alternative, AI grep, LLM grep, token compression, MCP server, grep for AI agents, grep for Claude Code, rust grep, SIMD grep, parallel grep, token-efficient code search
 robots: index, follow
 -->
+
+> # ARCHIVED: everything moved to [ziggygrep](https://github.com/AkashPriyadarshii/ziggygrep)
+>
+> **rustygrep gets no more fixes. All new features land in ziggygrep now.**
+> ziggygrep is pure Zig, one static binary, zero deps, and beats ripgrep
+> in 22 of 22 bench cases with byte-identical output. Use it for speed.
+> This repo stays up for its `--llm`, `--json`, regex, and MCP server modes, as-is.
 
 <div align="center">
 
